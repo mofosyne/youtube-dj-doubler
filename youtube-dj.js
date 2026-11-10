@@ -31,7 +31,11 @@ function createPlayer(containerId, playerId) {
             autoplay: 0,
             controls: 1,
             rel: 0,
-            modestbranding: 1
+            modestbranding: 1,
+            playsinline: 1,
+            // Error 153 happens when YouTube can't identify the embedding site
+            // (e.g. page opened via file://). Only send origin on http(s).
+            ...(location.protocol.startsWith('http') ? { origin: location.origin } : {})
         },
         events: {
             'onReady': function(e) {
