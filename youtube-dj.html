@@ -10,8 +10,18 @@
     <div class="container">
         <h1>YouTube DJ Doubler</h1>
 
+        <div class="players-row">
+            <div class="player-col">
+                <h2>Video A</h2>
+                <div class="player-wrap"><div id="playerA"></div></div>
+            </div>
+            <div class="player-col">
+                <h2>Video B</h2>
+                <div class="player-wrap"><div id="playerB"></div></div>
+            </div>
+        </div>
+
         <div class="crossfade-section">
-            <h2>Mix Timeline</h2>
             <div class="timeline-toolbar">
                 <span id="timeDisplay" class="time-display">0:00.0</span>
                 <label for="mixMode">Fade law:</label>
@@ -21,9 +31,6 @@
                 </select>
                 <button class="small-btn" onclick="copyShareLink()">Copy share link</button>
             </div>
-            <p class="hint">Drag the A / B lanes to shift them &middot; click the ruler to move the playhead &middot;
-                click the curve to add a point, drag to move it, double-click to remove &middot; hold Shift for fine control.
-                Curve top = only B, bottom = only A.</p>
             <svg id="timeline" aria-label="Mix timeline"></svg>
             <div class="crossfade-visual">
                 <div class="fade-bar">
@@ -44,6 +51,10 @@
             <button id="reset" onclick="resetPlayers()">Reset</button>
         </div>
 
+        <div class="status">
+            <p id="statusText"></p>
+        </div>
+
         <div class="video-section">
             <div class="video-container">
                 <h2>Video A</h2>
@@ -59,27 +70,28 @@
                     </div>
                     <details class="beat-settings">
                         <summary>Beat grid (BPM)</summary>
-                    <div class="control-group">
-                        <label for="bpmA">BPM (optional, enables beat grid &amp; snapping):</label>
-                        <div class="inline-row">
-                            <input type="number" id="bpmA" min="0" step="0.1" placeholder="e.g. 120">
-                            <button onclick="tapTempo('A')">Tap</button>
+                        <div class="control-group">
+                            <label for="bpmA">BPM (optional, enables beat grid &amp; snapping):</label>
+                            <div class="inline-row">
+                                <input type="number" id="bpmA" min="0" step="0.1" placeholder="e.g. 120">
+                                <button onclick="tapTempo('A')">Tap</button>
+                            </div>
                         </div>
-                    </div>
-                    <div class="control-group">
-                        <label for="beatA">First beat (s into video):</label>
-                        <div class="inline-row">
-                            <input type="number" id="beatA" value="0" min="0" step="0.01">
-                            <button onclick="setFirstBeat('A')">Set to current</button>
+                        <div class="control-group">
+                            <label for="beatA">Beat 1 position (s into video):</label>
+                            <div class="inline-row">
+                                <input type="number" id="beatA" value="0" min="0" step="0.01">
+                                <button onclick="setFirstBeat('A')">Set to current</button>
+                            </div>
+                            <span class="field-hint">Where the first clear beat (e.g. the first kick) lands, counted from the
+                                very start of the video. Pause on it and press &ldquo;Set to current&rdquo;.</span>
                         </div>
-                    </div>
                     </details>
                 </div>
                 <div class="url-input">
                     <input type="text" id="urlA" placeholder="Enter YouTube URL">
                     <button onclick="loadVideo('A')">Load</button>
                 </div>
-                <div class="player-wrap"><div id="playerA"></div></div>
             </div>
 
             <div class="video-container">
@@ -100,32 +112,43 @@
                     </div>
                     <details class="beat-settings">
                         <summary>Beat grid (BPM)</summary>
-                    <div class="control-group">
-                        <label for="bpmB">BPM (optional, enables beat grid &amp; snapping):</label>
-                        <div class="inline-row">
-                            <input type="number" id="bpmB" min="0" step="0.1" placeholder="e.g. 120">
-                            <button onclick="tapTempo('B')">Tap</button>
+                        <div class="control-group">
+                            <label for="bpmB">BPM (optional, enables beat grid &amp; snapping):</label>
+                            <div class="inline-row">
+                                <input type="number" id="bpmB" min="0" step="0.1" placeholder="e.g. 120">
+                                <button onclick="tapTempo('B')">Tap</button>
+                            </div>
                         </div>
-                    </div>
-                    <div class="control-group">
-                        <label for="beatB">First beat (s into video):</label>
-                        <div class="inline-row">
-                            <input type="number" id="beatB" value="0" min="0" step="0.01">
-                            <button onclick="setFirstBeat('B')">Set to current</button>
+                        <div class="control-group">
+                            <label for="beatB">Beat 1 position (s into video):</label>
+                            <div class="inline-row">
+                                <input type="number" id="beatB" value="0" min="0" step="0.01">
+                                <button onclick="setFirstBeat('B')">Set to current</button>
+                            </div>
+                            <span class="field-hint">Where the first clear beat (e.g. the first kick) lands, counted from the
+                                very start of the video. Pause on it and press &ldquo;Set to current&rdquo;.</span>
                         </div>
-                    </div>
                     </details>
                 </div>
                 <div class="url-input">
                     <input type="text" id="urlB" placeholder="Enter YouTube URL">
                     <button onclick="loadVideo('B')">Load</button>
                 </div>
-                <div class="player-wrap"><div id="playerB"></div></div>
             </div>
         </div>
 
-        <div class="status">
-            <p id="statusText"></p>
+        <div class="instructions">
+            <h2>How to use</h2>
+            <ul>
+                <li><strong>Load videos:</strong> paste a YouTube URL for A and B and press Load.</li>
+                <li><strong>Align:</strong> drag the A / B lanes on the timeline to shift them (Shift = fine). Negative offsets mean B starts first.</li>
+                <li><strong>Beat match (optional):</strong> open &ldquo;Beat grid&rdquo;, enter or tap each BPM and set Beat 1 position.
+                    Lanes then snap so beats line up.</li>
+                <li><strong>Crossfade:</strong> click the curve to add a point, drag to move it, double-click (or right-click) to remove.
+                    Top = only B, bottom = only A. Add several points for A&rarr;B&rarr;A mixes.</li>
+                <li><strong>Play:</strong> click the ruler to move the playhead, then Play, or use Play from start.</li>
+                <li><strong>Save &amp; share:</strong> settings are saved automatically and live in the page URL &mdash; copy it to share your mix.</li>
+            </ul>
         </div>
     </div>
 
