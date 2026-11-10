@@ -11,6 +11,7 @@ A web-based application that lets you mix YouTube videos like a DJ, with both ba
 - **Crossfade Curve**: One editable curve (top = only B, bottom = only A). Click to add points, drag to move, double-click to remove. Supports multiple transitions (A→B→A…). Equal-power or linear fade law
 - **Start Time / Volume**: Per-video start point and master volume
 - **Saved settings**: Everything (YouTube IDs, start/offset, BPM, volumes, fade law, curve) is saved automatically in your browser and written live into the page URL as a short readable hash such as `#a=ViMftVmc3Ts&b=yt1polx2D_4&o=3.5&bb=128` (defaults are omitted), so the address bar is always a shareable link. "Copy share link" is a shortcut for that
+- **Solo button** (next to Tap) plays just that video while you measure its tempo; press again to return to Mix
 - **Monitor**: Solo A, Solo B, or hear Both at full volume (ignoring the curve) while checking beats; always starts back on Mix after a reload
 - **Playback**: Play from the playhead (click the ruler to move it) or from the start
 

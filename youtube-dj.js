@@ -265,6 +265,20 @@ function tapTempo(id) {
     }
 }
 
+// "Solo" next to Tap: hear only this video while measuring; press again to go back to Mix.
+function toggleSolo(id) {
+    const mode = id.toLowerCase();
+    $('monitor').value = $('monitor').value === mode ? 'mix' : mode;
+    syncSoloButtons();
+    applyVolumes(true);
+}
+
+function syncSoloButtons() {
+    IDS.forEach((id) => {
+        $('solo' + id).classList.toggle('active', $('monitor').value === id.toLowerCase());
+    });
+}
+
 function setFirstBeat(id) {
     const p = getPlayer(id);
     if (!p || !p.getCurrentTime) {
@@ -757,7 +771,7 @@ window.addEventListener('DOMContentLoaded', function() {
         $(id).addEventListener('input', renderTimeline);
     });
     $('mixMode').addEventListener('change', () => { applyVolumes(true); scheduleSave(); });
-    $('monitor').addEventListener('change', () => applyVolumes(true));
+    $('monitor').addEventListener('change', () => { syncSoloButtons(); applyVolumes(true); });
 
     const svg = $('timeline');
     svg.addEventListener('pointerdown', onTimelineDown);
@@ -787,4 +801,5 @@ window.syncPlay = syncPlay;
 window.resetPlayers = resetPlayers;
 window.tapTempo = tapTempo;
 window.setFirstBeat = setFirstBeat;
+window.toggleSolo = toggleSolo;
 window.copyShareLink = copyShareLink;

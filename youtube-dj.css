@@ -445,3 +445,5 @@ h1 { font-size: 1.5em; margin: 0 0 8px; }
 .status { padding: 0; margin-bottom: 14px; }
 .status p { margin: 6px 0; }
 .small-btn { margin-left: auto; }
+
+.inline-row button.active { background: #ff6b6b; }
