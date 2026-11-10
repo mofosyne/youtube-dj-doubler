@@ -498,3 +498,18 @@ h1 { font-size: 1.5em; margin: 0 0 8px; }
 .tl-range { stroke: #4dd0e1; stroke-width: 1.5; stroke-dasharray: 5 3; pointer-events: none; }
 .tl-range-flag { fill: #4dd0e1; pointer-events: none; }
 #timeline text.tl-range-text { fill: #4dd0e1; font-weight: 600; }
+
+.player-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    color: #ffd166;
+    font-weight: 600;
+    z-index: 3;
+    pointer-events: none; /* clicks still reach the YouTube player underneath */
+}
+.player-loading[hidden] { display: none; }
+.playback-controls button:disabled { opacity: 0.5; cursor: wait; transform: none; box-shadow: none; }

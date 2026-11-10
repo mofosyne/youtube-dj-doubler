@@ -26,6 +26,8 @@ let curve = defaultCurve();
 
 const mix = {
     playing: false,
+    preparing: false,
+    token: 0,
     t: 0,          // current playhead in mix seconds
     tAt0: 0,
     perf0: 0,
@@ -147,11 +149,12 @@ function onPlayerReady(event, playerId) {
     updateDuration(playerId);
     applyVolumes(true);
     applyRate(playerId);
-    updateStatus(`Player ${playerId} ready`);
+    if (loadState[playerId] === 'loading' && event.target.getPlayerState() === 5) forceLoad(playerId);
 }
 
 function onPlayerStateChange(event, playerId) {
     updateDuration(playerId);
+    if (event.data === 5 && loadState[playerId] === 'loading') forceLoad(playerId);
 }
 
 function updateDuration(playerId) {
@@ -177,6 +180,8 @@ function onPlayerError(event, playerId) {
     console.error(`Player ${playerId} error:`, event.data);
     const why = ERROR_TEXT[event.data] ? ` - ${ERROR_TEXT[event.data]}` : '';
     updateStatus(`Error loading video ${playerId}: ${event.data}${why}`);
+    forcing[playerId] = false;
+    setLoadState(playerId, 'error');
     showPlayerMessage(playerId, event.data);
 }
 
@@ -226,6 +231,8 @@ function loadVideoFromUrl(playerId, url) {
     }
     videoState[playerId].url = url;
     clearPlayerMessage(playerId);
+    setLoadState(playerId, 'loading');
+    forcing[playerId] = false;
     scheduleSave();
     videoState[playerId].duration = 0;
     $(`url${playerId}`).value = url;
@@ -420,30 +427,149 @@ function matchTempo(id) {
     });
 }
 
+// ---------- loading: force-load each video, lock Play until ready ----------
+// A video that is only "cued" has not loaded anything, and seeking it does nothing useful. So
+// once it is cued we start it muted, wait until it really plays, pause it at its start point
+// and unmute. Only then is the video "ready".
+const FORCE_LOAD_TIMEOUT = 12000;  // ms to wait for the muted start
+const LOAD_WATCHDOG = 25000;       // never lock Play for longer than this
+const loadState = { A: 'none', B: 'none' }; // none | loading | ready | error
+const forcing = { A: false, B: false };
+const loadTimer = { A: null, B: null };
+
+function setLoadState(id, s) {
+    loadState[id] = s;
+    clearTimeout(loadTimer[id]);
+    if (s === 'loading') {
+        loadTimer[id] = setTimeout(() => {
+            if (loadState[id] === 'loading') {
+                forcing[id] = false;
+                setLoadState(id, 'ready');
+                updateStatus(`Video ${id} is taking long to load; you can try Play anyway`);
+            }
+        }, LOAD_WATCHDOG);
+    }
+    const badge = $('loading' + id);
+    if (badge) badge.hidden = s !== 'loading';
+    updateTransport();
+}
+
+const isLoading = () => IDS.some((id) => loadState[id] === 'loading');
+
+function updateTransport() {
+    const locked = isLoading() || mix.preparing;
+    ['playBoth', 'syncPlay'].forEach((bid) => {
+        const b = $(bid);
+        b.disabled = locked;
+        b.title = locked ? (isLoading() ? 'Waiting for the videos to load' : 'Preparing playback') : '';
+    });
+    const play = $('playBoth');
+    play.innerHTML = isLoading() ? '&#8987; Loading&hellip;' : mix.preparing ? '&#8987; Preparing&hellip;' : '&#9654; Play';
+}
+
+function waitFor(cond, timeoutMs, cb, minMs) {
+    const t0 = performance.now();
+    (function poll() {
+        const elapsed = performance.now() - t0;
+        if ((!minMs || elapsed >= minMs) && cond()) return cb(true);
+        if (elapsed > timeoutMs) return cb(false);
+        setTimeout(poll, 80);
+    })();
+}
+
+function forceLoad(id) {
+    const p = getPlayer(id);
+    if (!p || forcing[id]) return;
+    forcing[id] = true;
+    updateStatus(`Loading video ${id} (muted pre-load)...`);
+    if (p.mute) p.mute();
+    p.seekTo(startOf(id), true);
+    p.playVideo();
+    const finish = (ok) => {
+        if (p.unMute) p.unMute();
+        forcing[id] = false;
+        if (loadState[id] !== 'loading') return;
+        setLoadState(id, 'ready');
+        updateDuration(id);
+        applyVolumes(true);
+        applyRate(id);
+        updateStatus(ok
+            ? `Video ${id} loaded`
+            : `Video ${id} could not be pre-loaded (your browser may block autoplay). Click its play button once, or press Play anyway.`);
+    };
+    waitFor(() => p.getPlayerState() === 1, FORCE_LOAD_TIMEOUT, (playing) => {
+        p.pauseVideo();
+        if (!playing) return finish(false);
+        p.seekTo(startOf(id), true);
+        waitFor(() => p.getPlayerState() === 2, 5000, finish, 250);
+    });
+}
+
 // ---------- playback engine ----------
 function startMix(t) {
+    if (isLoading()) {
+        updateStatus('Still loading the videos...');
+        return;
+    }
     if (!playerA && !playerB) {
         updateStatus('Load a video first');
         return;
     }
     clearInterval(mix.timer);
+    mix.timer = null;
+    mix.playing = false;
     // hard limit: playback always stays inside the start/end range
     if (t < mixStart() - 0.01 || t >= mixEnd()) t = mixStart();
-    mix.t = Math.max(0, t);
-    mix.tAt0 = mix.t;
+    t = Math.max(0, t);
+    const token = ++mix.token;
+
+    // Prepare: park every lane at the spot it will play from and wait until it is buffered there,
+    // so all lanes start together instead of loading while the clock is already running.
+    mix.preparing = true;
+    mix.t = t;
+    updatePlayhead();
+    updateTransport();
+    updateStatus('Preparing playback...');
+    const o = origins();
+    const targets = {};
+    IDS.forEach((id) => {
+        const p = getPlayer(id);
+        if (!p || !p.getPlayerState || loadState[id] === 'error') return;
+        const pos = startOf(id) + Math.max(0, t - o[id]) * rateOf(id);
+        const stopAt = endOf(id) > 0 ? endOf(id) : videoState[id].duration;
+        if (stopAt && pos >= stopAt) return; // this lane has already finished at t
+        targets[id] = pos;
+        p.pauseVideo();
+        p.seekTo(pos, true);
+    });
+    const settled = () => Object.keys(targets).every((id) => {
+        const p = getPlayer(id);
+        const s = p.getPlayerState();
+        return (s === 2 || s === 5) && Math.abs(p.getCurrentTime() - targets[id]) < 1;
+    });
+    waitFor(settled, 6000, (ok) => {
+        if (token !== mix.token) return; // paused or restarted meanwhile
+        mix.preparing = false;
+        updateTransport();
+        beginMix(t);
+        if (!ok) updateStatus('Started before every video finished buffering; it may catch up in a moment');
+    }, 250);
+}
+
+function beginMix(t) {
+    mix.t = t;
+    mix.tAt0 = t;
     mix.perf0 = performance.now();
     mix.playing = true;
     mix.started = { A: false, B: false };
-    IDS.forEach((id) => {
-        const p = getPlayer(id);
-        if (p && p.pauseVideo) p.pauseVideo();
-    });
     mix.timer = setInterval(tick, 40);
     tick();
     updateStatus(`Playing mix from ${fmtTime(mix.t)}`);
 }
 
 function pauseMix() {
+    mix.token++; // cancels a start that is still preparing
+    mix.preparing = false;
     clearInterval(mix.timer);
     mix.timer = null;
     mix.playing = false;
@@ -451,6 +577,7 @@ function pauseMix() {
         const p = getPlayer(id);
         if (p && p.pauseVideo) p.pauseVideo();
     });
+    updateTransport();
     updatePlayhead();
 }
 
@@ -475,7 +602,7 @@ function tick() {
         }
         if (!mix.started[id]) {
             if (p.setPlaybackRate) p.setPlaybackRate(rateOf(id));
-            p.seekTo(pos, true);
+            if (Math.abs(p.getCurrentTime() - pos) > 0.15) p.seekTo(pos, true);
             p.playVideo();
             mix.started[id] = true;
             mix.startedAt[id] = performance.now();
@@ -1271,7 +1398,7 @@ window.addEventListener('DOMContentLoaded', function() {
             !(t.tagName === 'INPUT' && (t.type === 'range' || t.type === 'checkbox'));
         if (typing) return;
         e.preventDefault(); // also stops a focused button from being "clicked" again
-        if (mix.playing) pauseBoth(); else playBoth();
+        if (mix.playing || mix.preparing) pauseBoth(); else if (isLoading()) updateStatus('Still loading the videos...'); else playBoth();
     });
 
     renderTimeline();

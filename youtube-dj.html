@@ -16,11 +16,11 @@
         <div class="players-row">
             <div class="player-col">
                 <h2>Video A</h2>
-                <div class="player-wrap"><div id="playerA"></div></div>
+                <div class="player-wrap"><div id="playerA"></div><div class="player-loading" id="loadingA" hidden>Loading&hellip;</div></div>
             </div>
             <div class="player-col">
                 <h2>Video B</h2>
-                <div class="player-wrap"><div id="playerB"></div></div>
+                <div class="player-wrap"><div id="playerB"></div><div class="player-loading" id="loadingB" hidden>Loading&hellip;</div></div>
             </div>
         </div>
 
@@ -192,7 +192,7 @@
             <h2>How to use</h2>
             <ul>
                 <li><strong>Example:</strong> <a href="youtube-dj.html#a=ViMftVmc3Ts&b=yt1polx2D_4&sb=0.51&o=-16.9&ba=101.8&bb=99.8&fa=42.61&fb=60&vb=80&ma=4.25,42.63&mb=21.69,60.17&c=0:0,57.742:0,57.792:0.29,59.51:0.747,59.56:1,138.488:1">load an example mix</a> to see markers, beat grids and a crossfade curve already set up.</li>
-                <li><strong>Load videos:</strong> paste a YouTube URL for A and B and press Load.</li>
+                <li><strong>Load videos:</strong> paste a YouTube URL for A and B and press Load. Each video is pre-loaded (briefly started muted, then paused) and Play stays locked until they are ready, so both start together.</li>
                 <li><strong>Start / end flags:</strong> every lane has a flag at each end. Drag the left one to choose where the clip starts and the right one to choose where it stops; the music stays lined up and the flags snap to that clip&rsquo;s own beats and markers (Shift = free).</li>
                 <li><strong>Start / end of the mix:</strong> the cyan flags in the ruler mark where the whole mix starts and ends. Drag them (they snap to beats and markers; Shift = free). Play is limited to that range: it always starts at the start flag (or the playhead if it is inside) and stops at the end flag.</li>
                 <li><strong>Zoom &amp; move:</strong> the timeline starts zoomed to show both whole clips. Use &minus; / + (or Ctrl + scroll) to zoom, Shift + scroll or the strip under the timeline to move, and Fit to see everything again.</li>
