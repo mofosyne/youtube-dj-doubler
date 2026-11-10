@@ -447,3 +447,7 @@ h1 { font-size: 1.5em; margin: 0 0 8px; }
 .small-btn { margin-left: auto; }
 
 .inline-row button.active { background: #ff6b6b; }
+
+.tl-marker { stroke: #fff; stroke-width: 1.5; pointer-events: none; }
+.tl-marker-flag { fill: #ffd166; pointer-events: none; }
+.tl-marker-hit { fill: transparent; cursor: pointer; }

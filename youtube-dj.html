@@ -74,6 +74,13 @@
                         <input type="range" id="volumeA" min="0" max="100" value="100">
                         <span id="volumeValueA">100%</span>
                     </div>
+                    <div class="control-group">
+                        <label>Markers (e.g. where the vocals start):</label>
+                        <div class="inline-row">
+                            <button onclick="addMarker('A')" title="Drop a marker at this video's current time">&#9873; Mark here</button>
+                            <button onclick="clearMarkers('A')">Clear</button>
+                        </div>
+                    </div>
                     <details class="beat-settings">
                         <summary>Beat grid (BPM)</summary>
                         <div class="control-group">
@@ -117,6 +124,13 @@
                         <input type="range" id="volumeB" min="0" max="100" value="100">
                         <span id="volumeValueB">100%</span>
                     </div>
+                    <div class="control-group">
+                        <label>Markers (e.g. where the vocals start):</label>
+                        <div class="inline-row">
+                            <button onclick="addMarker('B')" title="Drop a marker at this video's current time">&#9873; Mark here</button>
+                            <button onclick="clearMarkers('B')">Clear</button>
+                        </div>
+                    </div>
                     <details class="beat-settings">
                         <summary>Beat grid (BPM)</summary>
                         <div class="control-group">
@@ -154,6 +168,7 @@
                     Lanes then snap so beats line up.</li>
                 <li><strong>Crossfade:</strong> click the curve to add a point, drag to move it, double-click (or right-click) to remove.
                     Top = only B, bottom = only A. Add several points for A&rarr;B&rarr;A mixes.</li>
+                <li><strong>Markers:</strong> pause a video where something important happens (vocals, drop) and press &ldquo;Mark here&rdquo;. A flag appears on its lane; click it to jump the playhead there, double-click to delete it. Dragging a lane snaps a marker on A to a marker on B.</li>
                 <li><strong>Play:</strong> click the ruler to move the playhead, then Play, or use Play from start.</li>
                 <li><strong>Save &amp; share:</strong> settings are saved automatically and live in the page URL &mdash; copy it to share your mix.</li>
             </ul>

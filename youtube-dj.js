@@ -36,6 +36,7 @@ const mix = {
 };
 
 const taps = { A: [], B: [] };
+const markers = { A: [], B: [] }; // seconds into each video, kept sorted
 
 // ---------- small helpers ----------
 const $ = (id) => document.getElementById(id);
@@ -279,6 +280,26 @@ function syncSoloButtons() {
     });
 }
 
+// ---------- markers (cue points inside a clip, e.g. where the vocals start) ----------
+function addMarker(id) {
+    const p = getPlayer(id);
+    if (!p || !p.getCurrentTime) {
+        updateStatus(`Load video ${id} first`);
+        return;
+    }
+    const t = Math.round(p.getCurrentTime() * 100) / 100;
+    if (markers[id].some((m) => Math.abs(m - t) < 0.05)) return;
+    markers[id].push(t);
+    markers[id].sort((a, b) => a - b);
+    renderTimeline();
+    updateStatus(`Marker added to video ${id} at ${fmtTime(t)}`);
+}
+
+function clearMarkers(id) {
+    markers[id] = [];
+    renderTimeline();
+}
+
 function setFirstBeat(id) {
     const p = getPlayer(id);
     if (!p || !p.getCurrentTime) {
@@ -379,6 +400,7 @@ function resetPlayers() {
         videoState[id].volume = 100;
     });
     curve = defaultCurve();
+    markers.A = []; markers.B = [];
     mix.t = 0;
     applyVolumes(true);
     renderTimeline();
@@ -491,6 +513,21 @@ function drawLane(svg, id, y, origin) {
             }, svg);
         }
     }
+    // markers: a flag at (origin + marker - start), only inside the visible part of the clip
+    markers[id].forEach((m, i) => {
+        if (m < startOf(id) || m > startOf(id) + laneLength(id)) return;
+        const x = x0 + (m - startOf(id)) * view.pps;
+        if (x < 0 || x > view.W) return;
+        el('line', { x1: x, x2: x, y1: y, y2: y + LAYOUT.laneH, class: 'tl-marker' }, svg);
+        el('polygon', { points: `${x},${y} ${x + 9},${y + 4} ${x},${y + 8}`, class: 'tl-marker-flag' }, svg);
+        const hit = el('rect', {
+            x: x - 5, y: y, width: 14, height: LAYOUT.laneH, class: 'tl-marker-hit',
+            'data-kind': 'marker', 'data-id': id, 'data-index': i
+        }, svg);
+        const tip = document.createElementNS(SVGNS, 'title');
+        tip.textContent = `${fmtTime(m)} - click to jump, double-click to delete`;
+        hit.appendChild(tip);
+    });
     const label = el('text', { x: Math.max(x0, LAYOUT.pad) + 6, y: y + 21 }, svg);
     const st = startOf(id);
     label.textContent = st > 0 ? `Video ${id} (starts at ${fmtTime(st)})` : `Video ${id}`;
@@ -509,6 +546,7 @@ function updatePlayhead() {
 // ---------- timeline interaction ----------
 let drag = null;
 let lastPointTap = { index: -1, time: 0 };
+let lastMarkerTap = { key: '', time: 0 };
 
 function svgX(e) {
     return e.clientX - $('timeline').getBoundingClientRect().left;
@@ -540,6 +578,20 @@ function onTimelineDown(e) {
             s0: startOf(id),                 // start point (seconds into the clip)
             other: o[id === 'A' ? 'B' : 'A'] // the other lane stays put
         };
+    } else if (kind === 'marker') {
+        const id = e.target.dataset.id;
+        const i = parseInt(e.target.dataset.index, 10);
+        const key = `${id}${i}`;
+        const now = performance.now();
+        if (lastMarkerTap.key === key && now - lastMarkerTap.time < 350) {
+            lastMarkerTap = { key: '', time: 0 };
+            markers[id].splice(i, 1);
+            renderTimeline();
+            return;
+        }
+        lastMarkerTap = { key, time: now };
+        const t = origins()[id] + markers[id][i] - startOf(id);
+        if (mix.playing) startMix(t); else { mix.t = t; updatePlayhead(); applyVolumes(); }
     } else if (kind === 'ruler') {
         drag = { kind, wasPlaying: mix.playing };
         if (mix.playing) pauseMix();
@@ -593,7 +645,19 @@ function onTimelineMove(e) {
         // each lane must still overlap the other and stay inside the visible timeline
         const maxOff = Math.max(0, Math.min(laneLength('A'), drag.extent - 2));
         const minOff = -Math.max(0, Math.min(laneLength('B'), drag.extent - 2));
-        const off = clamp(snapOffset(clamp(raw, minOff, maxOff), e.shiftKey), minOff, maxOff);
+        let off = clamp(snapOffset(clamp(raw, minOff, maxOff), e.shiftKey), minOff, maxOff);
+        if (!e.shiftKey) {
+            // snap so a marker on A lines up with a marker on B (within ~10px)
+            const sA = drag.id === 'A' ? start : startOf('A');
+            const sB = drag.id === 'B' ? start : startOf('B');
+            let best = null;
+            markers.A.forEach((ma) => markers.B.forEach((mb) => {
+                if (ma < sA || mb < sB) return;
+                const cand = (ma - sA) - (mb - sB);
+                if (Math.abs(cand - raw) < 10 / view.pps && (best === null || Math.abs(cand - raw) < Math.abs(best - raw))) best = cand;
+            }));
+            if (best !== null) off = clamp(best, minOff, maxOff);
+        }
         $('offsetB').value = Math.round(off * 1000) / 1000;
         renderTimeline();
     } else if (drag.kind === 'ruler') {
@@ -626,7 +690,7 @@ const pendingLoad = {}; // video ids restored from settings, loaded once the YT 
 
 function collectSettings() {
     const round3 = (v) => Math.round(v * 1000) / 1000;
-    const s = { f: {}, vol: {}, ids: {}, mode: $('mixMode').value,
+    const s = { f: {}, vol: {}, ids: {}, markers: { A: markers.A.slice(), B: markers.B.slice() }, mode: $('mixMode').value,
                 curve: curve.map((p) => ({ t: round3(p.t), x: round3(p.x) })) };
     SETTING_FIELDS.forEach((id) => { s.f[id] = $(id).value; });
     IDS.forEach((id) => {
@@ -648,6 +712,7 @@ function encodeHash(s) {
         if (!isNaN(v) && v !== 0) parts.push(`${HASH_FIELDS[field]}=${v}`);
     }
     IDS.forEach((id) => { if (s.vol[id] !== 100) parts.push(`v${id.toLowerCase()}=${s.vol[id]}`); });
+    IDS.forEach((id) => { if (s.markers[id].length) parts.push(`m${id.toLowerCase()}=${s.markers[id].join(',')}`); });
     if (s.mode === 'linear') parts.push('m=linear');
     if (JSON.stringify(s.curve) !== JSON.stringify(defaultCurve())) {
         parts.push('c=' + s.curve.map((p) => `${p.t}:${p.x}`).join(','));
@@ -661,7 +726,11 @@ function decodeHash(str) {
         const i = pair.indexOf('=');
         if (i > 0) kv[pair.slice(0, i)] = decodeURIComponent(pair.slice(i + 1));
     });
-    const s = { f: {}, vol: {}, ids: { A: kv.a || '', B: kv.b || '' }, mode: kv.m || 'equal' };
+    const s = { f: {}, vol: {}, ids: { A: kv.a || '', B: kv.b || '' }, mode: kv.m || 'equal', markers: { A: [], B: [] } };
+    IDS.forEach((id) => {
+        const raw = kv[`m${id.toLowerCase()}`];
+        if (raw) s.markers[id] = raw.split(',').map(parseFloat).filter(isFinite);
+    });
     for (const field in HASH_FIELDS) s.f[field] = kv[HASH_FIELDS[field]] || (field.startsWith('bpm') ? '' : '0');
     s.vol.A = kv.va !== undefined ? kv.va : 100;
     s.vol.B = kv.vb !== undefined ? kv.vb : 100;
@@ -708,6 +777,10 @@ function applySettings(s) {
             $('url' + id).value = `https://youtu.be/${vid}`;
             pendingLoad[id] = vid;
         }
+    });
+    IDS.forEach((id) => {
+        const list = s.markers && s.markers[id];
+        markers[id] = Array.isArray(list) ? list.filter((v) => isFinite(v) && v >= 0).map(Number).sort((a, b) => a - b) : [];
     });
     if (s.mode === 'linear' || s.mode === 'equal') $('mixMode').value = s.mode;
     if (Array.isArray(s.curve) && s.curve.length >= 2 &&
@@ -802,4 +875,6 @@ window.resetPlayers = resetPlayers;
 window.tapTempo = tapTempo;
 window.setFirstBeat = setFirstBeat;
 window.toggleSolo = toggleSolo;
+window.addMarker = addMarker;
+window.clearMarkers = clearMarkers;
 window.copyShareLink = copyShareLink;
