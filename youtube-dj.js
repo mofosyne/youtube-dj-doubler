@@ -379,6 +379,8 @@ function el(name, attrs, parent) {
 }
 
 function timelineExtent() {
+    // keep the scale fixed while a lane is being dragged (otherwise it rescales under the pointer)
+    if (drag && drag.kind === 'lane') return drag.extent;
     const o = origins();
     const lastPt = curve[curve.length - 1].t;
     const need = Math.max(60, Math.abs(getOffset()) + 45, lastPt + 15, mix.t + 20);
@@ -510,7 +512,7 @@ function onTimelineDown(e) {
     svg.setPointerCapture(e.pointerId);
 
     if (kind === 'lane') {
-        drag = { kind, id: e.target.dataset.id, x0: svgX(e), off0: getOffset() };
+        drag = { kind, id: e.target.dataset.id, x0: svgX(e), off0: getOffset(), extent: view.extent };
     } else if (kind === 'ruler') {
         drag = { kind, wasPlaying: mix.playing };
         if (mix.playing) pauseMix();
@@ -545,8 +547,13 @@ function onTimelineMove(e) {
     if (drag.kind === 'lane') {
         const dt = (svgX(e) - drag.x0) / view.pps;
         // dragging A right is the same as moving B left, relative to A
-        const raw = drag.off0 + (drag.id === 'B' ? dt : -dt);
-        const off = snapOffset(raw, e.shiftKey);
+        let raw = drag.off0 + (drag.id === 'B' ? dt : -dt);
+        // a lane can slide until only a sliver is left: it must still overlap the
+        // other lane and stay inside the visible timeline (anything past the end is clipped)
+        const maxOff = Math.max(0, Math.min(laneLength('A'), drag.extent - 2));
+        const minOff = -Math.max(0, Math.min(laneLength('B'), drag.extent - 2));
+        raw = clamp(raw, minOff, maxOff);
+        const off = clamp(snapOffset(raw, e.shiftKey), minOff, maxOff);
         $('offsetB').value = Math.round(off * 1000) / 1000;
         renderTimeline();
     } else if (drag.kind === 'ruler') {
