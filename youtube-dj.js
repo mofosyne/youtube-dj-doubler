@@ -979,6 +979,18 @@ window.addEventListener('DOMContentLoaded', function() {
     });
     window.addEventListener('resize', renderTimeline);
 
+    // Following a link that only changes the #... part (e.g. the example mix) loads it in place
+    window.addEventListener('hashchange', function() {
+        if (location.hash.length <= 1) return;
+        pauseMix();
+        loadSavedSettings();
+        renderTimeline();
+        applyVolumes(true);
+        IDS.forEach((id) => applyRate(id));
+        loadPendingVideos();
+        updateStatus('Loaded mix from link');
+    });
+
     // Space = play / pause (not while typing in a field)
     document.addEventListener('keydown', function(e) {
         if (e.code !== 'Space' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;

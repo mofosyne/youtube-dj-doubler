@@ -456,3 +456,5 @@ h1 { font-size: 1.5em; margin: 0 0 8px; }
 #timeline text.tl-start-text { fill: #1a1a2e; font-weight: 600; font-size: 11px; }
 .tl-marker.target { stroke: #ff6b6b; stroke-width: 3; }
 .tl-marker-flag.target { fill: #ff6b6b; }
+.instructions a { color: #ff9f1c; }
+.instructions a:hover { color: #ffd166; }

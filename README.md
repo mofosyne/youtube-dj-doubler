@@ -33,6 +33,11 @@ A web-based application that lets you mix YouTube videos like a DJ, with both ba
 Deployed automatically to GitHub Pages by `.github/workflows/pages.yml` on every push to `main`
 (enable it once under Settings → Pages → Source: **GitHub Actions**).
 
+## Example
+
+[Open an example mix](https://mofosyne.github.io/youtube-dj-doubler/youtube-dj.html#a=ViMftVmc3Ts&b=yt1polx2D_4&sb=0.51&o=-16.9&ba=101.8&bb=99.8&fa=42.61&fb=60&vb=80&ma=4.25,42.63&mb=21.69,60.17&c=0:0,57.742:0,57.792:0.29,59.51:0.747,59.56:1,138.488:1):
+two videos with markers, beat grids (about 102 and 100 BPM), a trimmed start and a crossfade curve, all stored in the link itself.
+
 ## Quick Start
 
 1. **Basic Mode**:
