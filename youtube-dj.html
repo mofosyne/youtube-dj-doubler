@@ -24,6 +24,12 @@
         <div class="crossfade-section">
             <div class="timeline-toolbar">
                 <span id="timeDisplay" class="time-display">0:00.0</span>
+                <div class="playback-controls">
+                <button id="playBoth" onclick="playBoth()">&#9654; Play</button>
+                <button id="pauseBoth" onclick="pauseBoth()">Pause</button>
+                <button id="syncPlay" onclick="syncPlay()">&#9198; Play from start</button>
+                <button id="reset" onclick="resetPlayers()">Reset</button>
+                </div>
                 <label for="mixMode">Fade law:</label>
                 <select id="mixMode">
                     <option value="equal">Equal power</option>
@@ -42,13 +48,6 @@
                     <span>B</span>
                 </div>
             </div>
-        </div>
-
-        <div class="playback-controls">
-            <button id="playBoth" onclick="playBoth()">&#9654; Play</button>
-            <button id="pauseBoth" onclick="pauseBoth()">Pause</button>
-            <button id="syncPlay" onclick="syncPlay()">&#9198; Play from start</button>
-            <button id="reset" onclick="resetPlayers()">Reset</button>
         </div>
 
         <div class="status">

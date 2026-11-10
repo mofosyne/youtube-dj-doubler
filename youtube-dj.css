@@ -420,3 +420,27 @@ h1 {
 .instructions li { margin-bottom: 8px; line-height: 1.5; }
 .instructions strong { color: #e0e0e0; }
 .status { margin-bottom: 20px; }
+
+/* ---- compact layout: videos + timeline + transport in one view ---- */
+body { padding: 10px; }
+.container { padding: 5px 10px; }
+h1 { font-size: 1.5em; margin: 0 0 8px; }
+
+.players-row { flex-wrap: nowrap; justify-content: center; gap: 12px; margin-bottom: 10px; }
+.player-col {
+    min-width: 0;
+    flex: 0 1 min(calc(50% - 6px), calc(30vh * 16 / 9));
+}
+.player-col h2 { font-size: 0.95em; margin: 0 0 4px; }
+
+.crossfade-section { padding: 10px 14px; margin-bottom: 10px; }
+.timeline-toolbar { margin-bottom: 6px; gap: 10px; }
+.timeline-toolbar .playback-controls { margin: 0; gap: 8px; }
+.timeline-toolbar .playback-controls button { padding: 7px 14px; font-size: 13px; }
+.time-display { font-size: 18px; min-width: 70px; }
+.crossfade-visual { margin-top: 8px; }
+.fade-bar { height: 10px; border-radius: 5px; }
+.fade-labels { display: none; }
+.status { padding: 0; margin-bottom: 14px; }
+.status p { margin: 6px 0; }
+.small-btn { margin-left: auto; }
