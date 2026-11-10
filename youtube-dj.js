@@ -1,29 +1,83 @@
-// YouTube DJ Doubler - JavaScript
+// YouTube DJ Doubler - Basic mode with mix timeline
+//
+// Model: one shared "mix clock" in seconds. Each video is a lane on that clock.
+//   offset = (mix time B starts) - (mix time A starts); negative means B leads.
+//   A lane's origin (mix time at which its start point plays) is max(0, -offset) for A
+//   and max(0, offset) for B.
+//   The crossfade is one curve of (mix time, x) points, x = 0 -> only A, x = 1 -> only B.
 
-// Global player references
+const IDS = ['A', 'B'];
+const DEFAULT_LANE_SECONDS = 180; // used until the real duration is known
+
 let playerA = null;
 let playerB = null;
-let playersReady = { A: false, B: false };
-let playerCreating = { A: false, B: false };
+const playersReady = { A: false, B: false };
+const playerCreating = { A: false, B: false };
 
-// State management
-let videoState = {
-    A: { url: '', startTime: 0, volume: 100, loaded: false },
-    B: { url: '', startTime: 0, volume: 100, offset: 0, loaded: false }
+const videoState = {
+    A: { url: '', volume: 100, duration: 0 },
+    B: { url: '', volume: 100, duration: 0 }
 };
 
-// Crossfade state
-let crossfadeDuration = 2; // seconds
-let isCrossfading = false;
-let crossfadeStartTime = 0;
+function defaultCurve() {
+    return [{ t: 0, x: 0 }, { t: 20, x: 0 }, { t: 30, x: 1 }];
+}
+let curve = defaultCurve();
 
-// YouTube API setup
+const mix = {
+    playing: false,
+    t: 0,          // current playhead in mix seconds
+    tAt0: 0,
+    perf0: 0,
+    timer: null,
+    started: { A: false, B: false },
+    startedAt: { A: 0, B: 0 },
+    lastVol: { A: -1, B: -1 }
+};
+
+const taps = { A: [], B: [] };
+
+// ---------- small helpers ----------
+const $ = (id) => document.getElementById(id);
+const num = (id, def = 0) => {
+    const v = parseFloat($(id).value);
+    return isNaN(v) ? def : v;
+};
+const getPlayer = (id) => (id === 'A' ? playerA : playerB);
+const startOf = (id) => num('start' + id);
+const bpmOf = (id) => num('bpm' + id);
+const beatOf = (id) => num('beat' + id);
+const getOffset = () => num('offsetB');
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+function origins() {
+    const o = getOffset();
+    return { A: Math.max(0, -o), B: Math.max(0, o) };
+}
+
+function laneLength(id) {
+    const d = videoState[id].duration;
+    return Math.max(1, d > 0 ? d - startOf(id) : DEFAULT_LANE_SECONDS);
+}
+
+function fmtTime(t) {
+    t = Math.max(0, t);
+    const m = Math.floor(t / 60);
+    const s = t - m * 60;
+    return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`;
+}
+
+function updateStatus(message) {
+    $('statusText').textContent = message;
+    console.log(message);
+}
+
+// ---------- YouTube API ----------
 function onYouTubeIframeAPIReady() {
     console.log('YouTube IFrame API ready');
     updateStatus('YouTube API loaded. Enter URLs and click Load.');
 }
 
-// Create player for a specific container
 function createPlayer(containerId, playerId, videoId, startSeconds) {
     return new YT.Player(containerId, {
         videoId: videoId,
@@ -41,59 +95,53 @@ function createPlayer(containerId, playerId, videoId, startSeconds) {
             ...(location.protocol.startsWith('http') ? { origin: location.origin } : {})
         },
         events: {
-            'onReady': function(e) {
-                onPlayerReady(e, playerId);
-            },
-            'onStateChange': function(e) {
-                onPlayerStateChange(e, playerId);
-            },
-            'onError': function(e) {
-                onPlayerError(e, playerId);
-            }
+            onReady: (e) => onPlayerReady(e, playerId),
+            onStateChange: (e) => onPlayerStateChange(e, playerId),
+            onError: (e) => onPlayerError(e, playerId)
         }
     });
 }
 
-// Player ready event handler
 function onPlayerReady(event, playerId) {
-    console.log(`Player ${playerId} ready`);
     playersReady[playerId] = true;
-
-    const player = event.target;
-    if (playerId === 'A') {
-        playerA = player;
-    } else {
-        playerB = player;
-    }
-
-    // Set initial volume
-    player.setVolume(videoState[playerId].volume);
-
+    playerCreating[playerId] = false;
+    if (playerId === 'A') playerA = event.target; else playerB = event.target;
+    updateDuration(playerId);
+    applyVolumes(true);
     updateStatus(`Player ${playerId} ready`);
-
 }
 
-// Player state change handler
 function onPlayerStateChange(event, playerId) {
-    const state = event.data;
-    const player = event.target;
-    console.log(`Player ${playerId} state changed to: ${state}`);
-    videoState[playerId].loaded = true;
-    if (playerId === 'B' && state === YT.PlayerState.PLAYING) {
-        handleOffsetSync();
+    updateDuration(playerId);
+}
+
+function updateDuration(playerId) {
+    const p = getPlayer(playerId);
+    if (!p || !p.getDuration) return;
+    const d = p.getDuration();
+    if (d > 0 && d !== videoState[playerId].duration) {
+        videoState[playerId].duration = d;
+        renderTimeline();
     }
 }
 
-// Player error handler
+const ERROR_TEXT = {
+    2: 'invalid video ID',
+    5: 'HTML5 player error',
+    100: 'video not found or private',
+    101: 'the owner does not allow embedding',
+    150: 'the owner does not allow embedding',
+    153: 'embedding blocked (no valid referrer - open the page over http/https, not file://)'
+};
+
 function onPlayerError(event, playerId) {
     console.error(`Player ${playerId} error:`, event.data);
-    updateStatus(`Error loading video ${playerId}: ${event.data}`);
+    const why = ERROR_TEXT[event.data] ? ` - ${ERROR_TEXT[event.data]}` : '';
+    updateStatus(`Error loading video ${playerId}: ${event.data}${why}`);
 }
 
-// Load video from URL input
 function loadVideo(playerId) {
-    const urlInput = document.getElementById(`url${playerId}`);
-    const url = urlInput.value.trim();
+    const url = $(`url${playerId}`).value.trim();
     if (!url) {
         updateStatus(`Please enter a YouTube URL for player ${playerId}`);
         return;
@@ -101,7 +149,6 @@ function loadVideo(playerId) {
     loadVideoFromUrl(playerId, url);
 }
 
-// Extract video ID from URL and load
 function loadVideoFromUrl(playerId, url) {
     const videoId = extractVideoId(url);
     if (!videoId) {
@@ -109,225 +156,460 @@ function loadVideoFromUrl(playerId, url) {
         return;
     }
     videoState[playerId].url = url;
-    const existing = playerId === 'A' ? playerA : playerB;
-    if (!existing) {
-        // Create the player directly with the video (an embed with no video shows a generic error)
-        if (playerCreating[playerId]) return;
-        if (typeof YT === 'undefined' || !YT.Player) {
-            updateStatus('YouTube API is still loading, try again in a moment.');
-            return;
-        }
-        playerCreating[playerId] = true;
-        createPlayer(`player${playerId}`, playerId, videoId, parseFloat(document.getElementById(`start${playerId}`).value) || 0);
-        updateStatus(`Loading video ${playerId}`);
+    videoState[playerId].duration = 0;
+    $(`url${playerId}`).value = url;
+
+    const existing = getPlayer(playerId);
+    if (existing) {
+        existing.cueVideoById(videoId, startOf(playerId));
+        updateStatus(`Loaded video ${playerId}`);
+        renderTimeline();
         return;
     }
-    const player = playerId === 'A' ? playerA : playerB;
-    if (player) {
-        player.loadVideoById(videoId, videoState[playerId].startTime);
-        player.setVolume(videoState[playerId].volume);
-        updateStatus(`Loading video ${playerId}`);
+    if (playerCreating[playerId]) return;
+    if (typeof YT === 'undefined' || !YT.Player) {
+        updateStatus('YouTube API is still loading, try again in a moment.');
+        return;
     }
-    document.getElementById(`url${playerId}`).value = url;
+    // Create the player directly with the video (an embed with no video shows a generic error)
+    playerCreating[playerId] = true;
+    createPlayer(`player${playerId}`, playerId, videoId, startOf(playerId));
+    updateStatus(`Loading video ${playerId}`);
 }
 
-// Extract YouTube video ID from URL
 function extractVideoId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// Update status message
-function updateStatus(message) {
-    document.getElementById('statusText').textContent = message;
-    console.log(message);
-}
-
-// Play both videos
-function playBoth() {
-    if (playerA && playerA.getVideoUrl) {
-        const startA = parseFloat(document.getElementById('startA').value) || 0;
-        playerA.seekTo(startA);
-        playerA.playVideo();
-    }
-    if (playerB && playerB.getVideoUrl) {
-        const startB = parseFloat(document.getElementById('startB').value) || 0;
-        const offset = parseFloat(document.getElementById('offsetB').value) || 0;
-        playerB.seekTo(startB + offset);
-        playerB.playVideo();
-    }
-    updateStatus('Playing both videos');
-}
-
-// Pause both videos
-function pauseBoth() {
-    if (playerA) playerA.pauseVideo();
-    if (playerB) playerB.pauseVideo();
-    updateStatus('Paused both videos');
-}
-
-// Sync play with offset
-function syncPlay() {
-    if (!playerA || !playerB) {
-        updateStatus('Both players need videos loaded');
-        return;
-    }
-    const startA = parseFloat(document.getElementById('startA').value) || 0;
-    const startB = parseFloat(document.getElementById('startB').value) || 0;
-    const offset = parseFloat(document.getElementById('offsetB').value) || 0;
-    const actualStartA = startA;
-    const actualStartB = startA + offset + startB;
-    playerA.seekTo(actualStartA);
-    playerB.seekTo(actualStartB);
-    startCrossfade();
-    playerA.playVideo();
-    playerB.playVideo();
-    updateStatus(`Sync playing: A at ${actualStartA}s, B at ${actualStartB}s`);
-}
-
-// Handle offset synchronization
-function handleOffsetSync() {
-    if (!playerA || !playerB) return;
-    const offset = parseFloat(document.getElementById('offsetB').value) || 0;
-    const startA = parseFloat(document.getElementById('startA').value) || 0;
-    const startB = parseFloat(document.getElementById('startB').value) || 0;
-    if (playerB.getPlayerState() === YT.PlayerState.PLAYING) {
-        const currentTimeB = playerB.getCurrentTime();
-        const expectedTimeA = currentTimeB - offset - startB + startA;
-        if (expectedTimeA > 0) {
-            playerA.seekTo(expectedTimeA);
-            playerA.playVideo();
+// ---------- crossfade curve ----------
+function curveAt(t) {
+    if (t <= curve[0].t) return curve[0].x;
+    for (let i = 1; i < curve.length; i++) {
+        if (t <= curve[i].t) {
+            const a = curve[i - 1], b = curve[i];
+            const span = b.t - a.t;
+            return span <= 0 ? b.x : a.x + (b.x - a.x) * ((t - a.t) / span);
         }
     }
+    return curve[curve.length - 1].x;
 }
 
-// Start crossfade between videos
-function startCrossfade() {
-    if (!playerA || !playerB) return;
-    const duration = parseFloat(document.getElementById('crossfade').value) || 0;
-    crossfadeDuration = duration;
-    if (duration <= 0) {
-        const volumeA = parseInt(document.getElementById('volumeA').value) || 100;
-        const volumeB = parseInt(document.getElementById('volumeB').value) || 100;
-        playerA.setVolume(volumeA);
-        playerB.setVolume(volumeB);
+function gainsAt(t) {
+    const x = curveAt(t);
+    if ($('mixMode').value === 'linear') return { A: 1 - x, B: x };
+    return { A: Math.cos(x * Math.PI / 2), B: Math.sin(x * Math.PI / 2) };
+}
+
+function applyVolumes(force) {
+    const g = gainsAt(mix.t);
+    IDS.forEach((id) => {
+        const vol = Math.round(videoState[id].volume * g[id]);
+        const p = getPlayer(id);
+        if (p && p.setVolume && (force || vol !== mix.lastVol[id])) {
+            p.setVolume(vol);
+            mix.lastVol[id] = vol;
+        }
+    });
+    $('fadeA').style.width = `${g.A * 100}%`;
+    $('fadeB').style.width = `${g.B * 100}%`;
+}
+
+// ---------- beat helpers ----------
+// Mix time of the beat nearest to t on lane `id` (needs a BPM).
+function nearestBeatMix(id, t) {
+    const bpm = bpmOf(id);
+    if (bpm <= 0) return t;
+    const p = 60 / bpm;
+    const base = origins()[id] + beatOf(id) - startOf(id); // mix time of beat 0
+    const k = Math.round((t - base) / p);
+    return base + k * p;
+}
+
+// Snap a proposed offset so B's first visible beat lands on one of A's beats.
+function snapOffset(raw, fine) {
+    const bpmA = bpmOf('A'), bpmB = bpmOf('B');
+    if (!fine && bpmA > 0 && bpmB > 0) {
+        const pB = 60 / bpmB;
+        const bOrigin = Math.max(0, raw);
+        const k0 = Math.ceil((startOf('B') - beatOf('B')) / pB);
+        const bFirst = bOrigin + beatOf('B') + k0 * pB - startOf('B');
+        const pA = 60 / bpmA;
+        const aOrigin = Math.max(0, -raw);
+        const j = Math.round((bFirst - aOrigin - beatOf('A') + startOf('A')) / pA);
+        const aBeat = aOrigin + beatOf('A') + j * pA - startOf('A');
+        return Math.round((raw - (bFirst - aBeat)) * 1000) / 1000;
+    }
+    const step = fine ? 0.01 : 0.1;
+    return Math.round(raw / step) * step;
+}
+
+function tapTempo(id) {
+    const now = performance.now();
+    const list = taps[id];
+    if (list.length && now - list[list.length - 1] > 2000) list.length = 0;
+    list.push(now);
+    if (list.length > 8) list.shift();
+    if (list.length >= 2) {
+        const avg = (list[list.length - 1] - list[0]) / (list.length - 1);
+        $('bpm' + id).value = (60000 / avg).toFixed(1);
+        renderTimeline();
+    }
+}
+
+function setFirstBeat(id) {
+    const p = getPlayer(id);
+    if (!p || !p.getCurrentTime) {
+        updateStatus(`Load video ${id} first`);
         return;
     }
-    isCrossfading = true;
-    crossfadeStartTime = Date.now();
-    animateCrossfade();
+    $('beat' + id).value = p.getCurrentTime().toFixed(2);
+    renderTimeline();
 }
 
-// Animate crossfade
-function animateCrossfade() {
-    if (!isCrossfading || !playerA || !playerB) return;
-    const elapsed = (Date.now() - crossfadeStartTime) / 1000;
-    const progress = Math.min(elapsed / crossfadeDuration, 1);
-    const volumeA = parseInt(document.getElementById('volumeA').value) || 100;
-    const volumeB = parseInt(document.getElementById('volumeB').value) || 100;
-    const newVolumeA = Math.round(volumeA * (1 - progress));
-    const newVolumeB = Math.round(volumeB * progress);
-    playerA.setVolume(newVolumeA);
-    playerB.setVolume(newVolumeB);
-    updateFadeIndicators(progress);
-    if (progress < 1) {
-        requestAnimationFrame(animateCrossfade);
-    } else {
-        isCrossfading = false;
+// ---------- playback engine ----------
+function startMix(t) {
+    if (!playerA && !playerB) {
+        updateStatus('Load a video first');
+        return;
+    }
+    clearInterval(mix.timer);
+    mix.t = Math.max(0, t);
+    mix.tAt0 = mix.t;
+    mix.perf0 = performance.now();
+    mix.playing = true;
+    mix.started = { A: false, B: false };
+    IDS.forEach((id) => {
+        const p = getPlayer(id);
+        if (p && p.pauseVideo) p.pauseVideo();
+    });
+    mix.timer = setInterval(tick, 40);
+    tick();
+    updateStatus(`Playing mix from ${fmtTime(mix.t)}`);
+}
+
+function pauseMix() {
+    clearInterval(mix.timer);
+    mix.timer = null;
+    mix.playing = false;
+    IDS.forEach((id) => {
+        const p = getPlayer(id);
+        if (p && p.pauseVideo) p.pauseVideo();
+    });
+    updatePlayhead();
+}
+
+function tick() {
+    const t = mix.tAt0 + (performance.now() - mix.perf0) / 1000;
+    mix.t = t;
+    const o = origins();
+    IDS.forEach((id) => {
+        const p = getPlayer(id);
+        if (!p || !p.getPlayerState) return;
+        const start = startOf(id);
+        const pos = start + (t - o[id]);
+        const dur = videoState[id].duration;
+        if (pos < start) {
+            // lane has not begun yet
+            if (mix.started[id]) { p.pauseVideo(); mix.started[id] = false; }
+            return;
+        }
+        if (dur && pos >= dur) {
+            if (p.getPlayerState() === 1) p.pauseVideo();
+            return;
+        }
+        if (!mix.started[id]) {
+            p.seekTo(pos, true);
+            p.playVideo();
+            mix.started[id] = true;
+            mix.startedAt[id] = performance.now();
+        } else if (performance.now() - mix.startedAt[id] > 1500 && p.getPlayerState() === 1) {
+            if (Math.abs(p.getCurrentTime() - pos) > 0.4) p.seekTo(pos, true); // drift correction
+        }
+    });
+    applyVolumes();
+    updatePlayhead();
+    const end = Math.max(o.A + laneLength('A'), o.B + laneLength('B'));
+    if (t > end) {
+        pauseMix();
+        updateStatus('Mix finished');
     }
 }
 
-// Update visual fade indicators
-function updateFadeIndicators(progress) {
-    const fadeA = document.getElementById('fadeA');
-    const fadeB = document.getElementById('fadeB');
-    if (fadeA && fadeB) {
-        const widthA = 100 - (progress * 100);
-        const widthB = progress * 100;
-        fadeA.style.width = `${widthA}%`;
-        fadeB.style.width = `${widthB}%`;
-    }
+function playBoth() { startMix(mix.t); }
+function syncPlay() { startMix(0); }
+function pauseBoth() {
+    pauseMix();
+    updateStatus('Paused');
 }
 
-// Reset players
 function resetPlayers() {
-    if (playerA) {
-        playerA.stopVideo();
-        playerA.seekTo(0);
-    }
-    if (playerB) {
-        playerB.stopVideo();
-        playerB.seekTo(0);
-    }
-    document.getElementById('startA').value = 0;
-    document.getElementById('startB').value = 0;
-    document.getElementById('offsetB').value = 0;
-    document.getElementById('volumeA').value = 100;
-    document.getElementById('volumeB').value = 100;
-    document.getElementById('crossfade').value = 2;
-    document.getElementById('fadeA').style.width = '50%';
-    document.getElementById('fadeB').style.width = '50%';
-    document.getElementById('volumeValueA').textContent = '100%';
-    document.getElementById('volumeValueB').textContent = '100%';
-    document.getElementById('crossfadeValue').textContent = '2s';
-    videoState.A.startTime = 0;
-    videoState.B.startTime = 0;
-    videoState.B.offset = 0;
-    crossfadeDuration = 2;
-    isCrossfading = false;
-    updateStatus('Players reset');
+    pauseMix();
+    IDS.forEach((id) => {
+        const p = getPlayer(id);
+        if (p && p.seekTo) p.seekTo(startOf(id), true);
+    });
+    ['startA', 'startB', 'offsetB', 'beatA', 'beatB'].forEach((id) => { $(id).value = 0; });
+    ['bpmA', 'bpmB'].forEach((id) => { $(id).value = ''; });
+    ['A', 'B'].forEach((id) => {
+        $('volume' + id).value = 100;
+        $('volumeValue' + id).textContent = '100%';
+        videoState[id].volume = 100;
+    });
+    curve = defaultCurve();
+    mix.t = 0;
+    applyVolumes(true);
+    renderTimeline();
+    updateStatus('Reset');
 }
 
-// Event listeners for controls
+// ---------- timeline rendering ----------
+const SVGNS = 'http://www.w3.org/2000/svg';
+const LAYOUT = { pad: 12, rulerH: 22, laneH: 34, aY: 26, bY: 64, curveY: 106, curveH: 96, H: 210 };
+const view = { extent: 60, pps: 10, W: 600, playhead: null };
+
+function el(name, attrs, parent) {
+    const e = document.createElementNS(SVGNS, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+}
+
+function timelineExtent() {
+    const o = origins();
+    const lastPt = curve[curve.length - 1].t;
+    const need = Math.max(60, Math.abs(getOffset()) + 45, lastPt + 15, mix.t + 20);
+    return Math.ceil(need / 30) * 30;
+}
+
+const xOf = (t) => LAYOUT.pad + t * view.pps;
+const tOf = (x) => (x - LAYOUT.pad) / view.pps;
+const curveYOf = (v) => LAYOUT.curveY + 8 + (1 - v) * (LAYOUT.curveH - 16);
+const curveVOf = (y) => clamp(1 - (y - LAYOUT.curveY - 8) / (LAYOUT.curveH - 16), 0, 1);
+
+function renderTimeline() {
+    const svg = $('timeline');
+    if (!svg) return;
+    const W = Math.max(300, svg.clientWidth || 600);
+    view.W = W;
+    view.extent = timelineExtent();
+    view.pps = (W - 2 * LAYOUT.pad) / view.extent;
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', LAYOUT.H);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    // ruler
+    el('rect', { x: 0, y: 0, width: W, height: LAYOUT.rulerH, class: 'tl-ruler', 'data-kind': 'ruler' }, svg);
+    const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+    const step = steps.find((s) => s * view.pps >= 60) || 600;
+    for (let t = 0; t <= view.extent; t += step) {
+        el('line', { x1: xOf(t), x2: xOf(t), y1: 14, y2: LAYOUT.curveY + LAYOUT.curveH, class: 'tl-tick' }, svg);
+        const label = el('text', { x: xOf(t) + 3, y: 11 }, svg);
+        label.textContent = fmtTime(t).replace('.0', '');
+    }
+
+    // lanes
+    const o = origins();
+    drawLane(svg, 'A', LAYOUT.aY, o.A);
+    drawLane(svg, 'B', LAYOUT.bY, o.B);
+
+    // curve area
+    el('rect', {
+        x: LAYOUT.pad, y: LAYOUT.curveY, width: W - 2 * LAYOUT.pad, height: LAYOUT.curveH,
+        class: 'tl-curve-bg', 'data-kind': 'curvebg'
+    }, svg);
+    const lb = el('text', { x: LAYOUT.pad + 4, y: LAYOUT.curveY + 12 }, svg);
+    lb.textContent = 'B';
+    const la = el('text', { x: LAYOUT.pad + 4, y: LAYOUT.curveY + LAYOUT.curveH - 4 }, svg);
+    la.textContent = 'A';
+
+    const pts = [];
+    pts.push(`${LAYOUT.pad},${curveYOf(curve[0].x)}`);
+    curve.forEach((p) => pts.push(`${xOf(p.t)},${curveYOf(p.x)}`));
+    pts.push(`${xOf(view.extent)},${curveYOf(curve[curve.length - 1].x)}`);
+    el('polyline', { points: pts.join(' '), class: 'tl-curve' }, svg);
+    curve.forEach((p, i) => {
+        el('circle', {
+            cx: xOf(p.t), cy: curveYOf(p.x), r: 6, class: 'tl-point',
+            'data-kind': 'point', 'data-index': i
+        }, svg);
+    });
+
+    // playhead
+    view.playhead = el('line', { y1: 0, y2: LAYOUT.H, class: 'tl-playhead' }, svg);
+    updatePlayhead();
+}
+
+function drawLane(svg, id, y, origin) {
+    const x0 = xOf(origin);
+    const w = laneLength(id) * view.pps;
+    el('rect', {
+        x: x0, y: y, width: w, height: LAYOUT.laneH, rx: 5,
+        class: `tl-lane ${id}`, 'data-kind': 'lane', 'data-id': id
+    }, svg);
+
+    // beat grid: video times fb + k*p within [start, start + length]
+    const bpm = bpmOf(id);
+    if (bpm > 0 && (60 / bpm) * view.pps >= 4) {
+        const p = 60 / bpm;
+        const start = startOf(id);
+        const fb = beatOf(id);
+        const kMin = Math.ceil((start - fb) / p);
+        const kMax = Math.floor((start + laneLength(id) - fb) / p);
+        for (let k = kMin; k <= kMax; k++) {
+            const x = x0 + (fb + k * p - start) * view.pps;
+            if (x < 0 || x > view.W) continue;
+            const isBar = ((k % 4) + 4) % 4 === 0;
+            el('line', {
+                x1: x, x2: x, y1: y + (isBar ? 2 : 10), y2: y + LAYOUT.laneH - (isBar ? 2 : 10),
+                class: 'tl-beat' + (isBar ? ' bar' : '')
+            }, svg);
+        }
+    }
+    const label = el('text', { x: Math.max(x0, LAYOUT.pad) + 6, y: y + 21 }, svg);
+    label.textContent = `Video ${id}`;
+}
+
+function updatePlayhead() {
+    if (view.playhead) {
+        const x = xOf(mix.t);
+        view.playhead.setAttribute('x1', x);
+        view.playhead.setAttribute('x2', x);
+    }
+    const td = $('timeDisplay');
+    if (td) td.textContent = fmtTime(mix.t);
+}
+
+// ---------- timeline interaction ----------
+let drag = null;
+let lastPointTap = { index: -1, time: 0 };
+
+function svgX(e) {
+    return e.clientX - $('timeline').getBoundingClientRect().left;
+}
+function svgY(e) {
+    return e.clientY - $('timeline').getBoundingClientRect().top;
+}
+
+function removePoint(i) {
+    if (curve.length > 2) {
+        curve.splice(i, 1);
+        renderTimeline();
+        applyVolumes();
+    }
+}
+
+function onTimelineDown(e) {
+    const kind = e.target.dataset.kind;
+    if (!kind) return;
+    const svg = $('timeline');
+    svg.setPointerCapture(e.pointerId);
+
+    if (kind === 'lane') {
+        drag = { kind, id: e.target.dataset.id, x0: svgX(e), off0: getOffset() };
+    } else if (kind === 'ruler') {
+        drag = { kind, wasPlaying: mix.playing };
+        if (mix.playing) pauseMix();
+        mix.t = Math.max(0, tOf(svgX(e)));
+        updatePlayhead();
+        applyVolumes();
+    } else if (kind === 'point') {
+        const i = parseInt(e.target.dataset.index, 10);
+        const now = performance.now();
+        if (lastPointTap.index === i && now - lastPointTap.time < 350) {
+            lastPointTap = { index: -1, time: 0 };
+            removePoint(i);
+            return;
+        }
+        lastPointTap = { index: i, time: now };
+        drag = { kind, index: i };
+    } else if (kind === 'curvebg') {
+        let t = Math.max(0, tOf(svgX(e)));
+        if (!e.shiftKey && bpmOf('A') > 0) t = Math.max(0, nearestBeatMix('A', t));
+        const pt = { t, x: curveVOf(svgY(e)) };
+        let idx = curve.findIndex((p) => p.t > t);
+        if (idx === -1) idx = curve.length;
+        curve.splice(idx, 0, pt);
+        drag = { kind: 'point', index: idx };
+        renderTimeline();
+        applyVolumes();
+    }
+}
+
+function onTimelineMove(e) {
+    if (!drag) return;
+    if (drag.kind === 'lane') {
+        const dt = (svgX(e) - drag.x0) / view.pps;
+        // dragging A right is the same as moving B left, relative to A
+        const raw = drag.off0 + (drag.id === 'B' ? dt : -dt);
+        const off = snapOffset(raw, e.shiftKey);
+        $('offsetB').value = Math.round(off * 1000) / 1000;
+        renderTimeline();
+    } else if (drag.kind === 'ruler') {
+        mix.t = Math.max(0, tOf(svgX(e)));
+        updatePlayhead();
+        applyVolumes();
+    } else if (drag.kind === 'point') {
+        const i = drag.index;
+        let t = Math.max(0, tOf(svgX(e)));
+        if (!e.shiftKey && bpmOf('A') > 0) t = Math.max(0, nearestBeatMix('A', t));
+        const lo = i > 0 ? curve[i - 1].t + 0.05 : 0;
+        const hi = i < curve.length - 1 ? curve[i + 1].t - 0.05 : Infinity;
+        curve[i].t = clamp(t, lo, hi);
+        curve[i].x = curveVOf(svgY(e));
+        renderTimeline();
+        applyVolumes();
+    }
+}
+
+function onTimelineUp() {
+    if (drag && drag.kind === 'ruler' && drag.wasPlaying) startMix(mix.t);
+    drag = null;
+}
+
+// ---------- wiring ----------
 window.addEventListener('DOMContentLoaded', function() {
-    const volumeA = document.getElementById('volumeA');
-    const volumeB = document.getElementById('volumeB');
-    const volumeValueA = document.getElementById('volumeValueA');
-    const volumeValueB = document.getElementById('volumeValueB');
-    volumeA.addEventListener('input', function() {
-        const value = this.value;
-        volumeValueA.textContent = `${value}%`;
-        videoState.A.volume = parseInt(value);
-        if (playerA) playerA.setVolume(parseInt(value));
+    ['A', 'B'].forEach((id) => {
+        $('volume' + id).addEventListener('input', function() {
+            $('volumeValue' + id).textContent = `${this.value}%`;
+            videoState[id].volume = parseInt(this.value, 10);
+            applyVolumes(true);
+        });
+        $('url' + id).addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') loadVideo(id);
+        });
     });
-    volumeB.addEventListener('input', function() {
-        const value = this.value;
-        volumeValueB.textContent = `${value}%`;
-        videoState.B.volume = parseInt(value);
-        if (playerB) playerB.setVolume(parseInt(value));
+
+    ['startA', 'startB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB'].forEach((id) => {
+        $(id).addEventListener('input', renderTimeline);
     });
-    const crossfade = document.getElementById('crossfade');
-    const crossfadeValue = document.getElementById('crossfadeValue');
-    crossfade.addEventListener('input', function() {
-        const value = this.value;
-        crossfadeValue.textContent = `${value}s`;
-        crossfadeDuration = parseFloat(value);
+    $('mixMode').addEventListener('change', () => applyVolumes(true));
+
+    const svg = $('timeline');
+    svg.addEventListener('pointerdown', onTimelineDown);
+    svg.addEventListener('pointermove', onTimelineMove);
+    svg.addEventListener('pointerup', onTimelineUp);
+    svg.addEventListener('pointercancel', onTimelineUp);
+    svg.addEventListener('contextmenu', function(e) {
+        if (e.target.dataset.kind === 'point') {
+            e.preventDefault();
+            removePoint(parseInt(e.target.dataset.index, 10));
+        }
     });
-    const startA = document.getElementById('startA');
-    const startB = document.getElementById('startB');
-    const offsetB = document.getElementById('offsetB');
-    startA.addEventListener('change', function() {
-        videoState.A.startTime = parseFloat(this.value) || 0;
-    });
-    startB.addEventListener('change', function() {
-        videoState.B.startTime = parseFloat(this.value) || 0;
-    });
-    offsetB.addEventListener('change', function() {
-        videoState.B.offset = parseFloat(this.value) || 0;
-    });
-    document.getElementById('urlA').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') loadVideo('A');
-    });
-    document.getElementById('urlB').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') loadVideo('B');
-    });
+    window.addEventListener('resize', renderTimeline);
+
+    renderTimeline();
+    applyVolumes(true);
     updateStatus('Ready to load YouTube videos');
 });
 
 // Make functions globally available
+window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
 window.loadVideo = loadVideo;
 window.playBoth = playBoth;
 window.pauseBoth = pauseBoth;
 window.syncPlay = syncPlay;
 window.resetPlayers = resetPlayers;
+window.tapTempo = tapTempo;
+window.setFirstBeat = setFirstBeat;

@@ -24,6 +24,20 @@
                         <input type="number" id="startA" value="0" min="0">
                     </div>
                     <div class="control-group">
+                        <label for="bpmA">BPM (optional, enables beat grid &amp; snapping):</label>
+                        <div class="inline-row">
+                            <input type="number" id="bpmA" min="0" step="0.1" placeholder="e.g. 120">
+                            <button onclick="tapTempo('A')">Tap</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label for="beatA">First beat (s into video):</label>
+                        <div class="inline-row">
+                            <input type="number" id="beatA" value="0" min="0" step="0.01">
+                            <button onclick="setFirstBeat('A')">Set to current</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
                         <label for="volumeA">Volume:</label>
                         <input type="range" id="volumeA" min="0" max="100" value="100">
                         <span id="volumeValueA">100%</span>
@@ -44,8 +58,22 @@
                         <input type="number" id="startB" value="0" min="0">
                     </div>
                     <div class="control-group">
-                        <label for="offsetB">Offset from A (s):</label>
-                        <input type="number" id="offsetB" value="0" min="0" step="0.1">
+                        <label for="offsetB">Offset from A (s, negative = B starts first):</label>
+                        <input type="number" id="offsetB" value="0" step="0.01">
+                    </div>
+                    <div class="control-group">
+                        <label for="bpmB">BPM (optional, enables beat grid &amp; snapping):</label>
+                        <div class="inline-row">
+                            <input type="number" id="bpmB" min="0" step="0.1" placeholder="e.g. 120">
+                            <button onclick="tapTempo('B')">Tap</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label for="beatB">First beat (s into video):</label>
+                        <div class="inline-row">
+                            <input type="number" id="beatB" value="0" min="0" step="0.01">
+                            <button onclick="setFirstBeat('B')">Set to current</button>
+                        </div>
                     </div>
                     <div class="control-group">
                         <label for="volumeB">Volume:</label>
@@ -57,12 +85,19 @@
         </div>
 
         <div class="crossfade-section">
-            <h2>Crossfade Controls</h2>
-            <div class="crossfade-controls">
-                <label for="crossfade">Crossfade Duration (s):</label>
-                <input type="range" id="crossfade" min="0" max="10" value="2" step="0.1">
-                <span id="crossfadeValue">2s</span>
+            <h2>Mix Timeline</h2>
+            <div class="timeline-toolbar">
+                <span id="timeDisplay" class="time-display">0:00.0</span>
+                <label for="mixMode">Fade law:</label>
+                <select id="mixMode">
+                    <option value="equal">Equal power</option>
+                    <option value="linear">Linear</option>
+                </select>
             </div>
+            <p class="hint">Drag the A / B lanes to shift them &middot; click the ruler to move the playhead &middot;
+                click the curve to add a point, drag to move it, double-click to remove &middot; hold Shift for fine control.
+                Curve top = only B, bottom = only A.</p>
+            <svg id="timeline" aria-label="Mix timeline"></svg>
             <div class="crossfade-visual">
                 <div class="fade-bar">
                     <div id="fadeA" class="fade-indicator"></div>
@@ -76,9 +111,9 @@
         </div>
 
         <div class="playback-controls">
-            <button id="playBoth" onclick="playBoth()">Play Both</button>
-            <button id="pauseBoth" onclick="pauseBoth()">Pause Both</button>
-            <button id="syncPlay" onclick="syncPlay()">Sync Play</button>
+            <button id="playBoth" onclick="playBoth()">&#9654; Play</button>
+            <button id="pauseBoth" onclick="pauseBoth()">Pause</button>
+            <button id="syncPlay" onclick="syncPlay()">&#9198; Play from start</button>
             <button id="reset" onclick="resetPlayers()">Reset</button>
         </div>
 

@@ -6,11 +6,11 @@ A web-based application that lets you mix YouTube videos like a DJ, with both ba
 
 ### Basic Mode
 - **Dual Video Players**: Load two YouTube videos simultaneously
-- **Start Time Control**: Set custom start times for each video
-- **Offset Control**: Sync videos with precise timing offsets
-- **Volume Control**: Adjust volume levels for each video independently
-- **Crossfade**: Smooth transitions between videos with adjustable duration
-- **Sync Play**: Start both videos with calculated timing
+- **Mix Timeline**: Two lanes on one shared clock. Drag lane A or B to shift them (negative offsets allowed); Shift = fine, otherwise snaps to 0.1s
+- **BPM & Beat Grid**: Enter or tap a BPM and a first-beat position per video to see a beat grid; dragging then snaps beats of A and B together
+- **Crossfade Curve**: One editable curve (top = only B, bottom = only A). Click to add points, drag to move, double-click to remove. Supports multiple transitions (A→B→A…). Equal-power or linear fade law
+- **Start Time / Volume**: Per-video start point and master volume
+- **Playback**: Play from the playhead (click the ruler to move it) or from the start
 
 ### Sample Mode
 - **Sample Recording**: Capture audio samples from YouTube videos
@@ -29,11 +29,10 @@ Deployed automatically to GitHub Pages by `.github/workflows/pages.yml` on every
 ## Quick Start
 
 1. **Basic Mode**:
-   - Open `youtube-dj.html` in your browser
-   - Enter YouTube URLs for both videos
-   - Click "Load" for each video
-   - Adjust start times, offsets, and volumes
-   - Use "Sync Play" to start both videos with your settings
+   - Open `youtube-dj.html` (via the live demo or a local web server, not `file://`)
+   - Enter YouTube URLs for both videos and click "Load"
+   - Drag the lanes on the timeline to align them, optionally set BPMs for beat snapping
+   - Shape the crossfade curve, then press "Play" or "Play from start"
 
 2. **Sample Mode**:
    - Open `youtube-dj-sample.html` in your browser
@@ -46,15 +45,15 @@ Deployed automatically to GitHub Pages by `.github/workflows/pages.yml` on every
 
 ### Basic Mode Controls
 
-- **URL Input**: Enter YouTube video URLs (full URLs or video IDs work)
-- **Start Time**: Set where each video should begin playing (in seconds)
-- **Offset**: Set the time difference between Video A and Video B
-- **Volume Sliders**: Control the volume for each video (0-100%)
-- **Crossfade**: Set the duration for smooth transitions between videos
-- **Play Both**: Start both videos at their current positions
-- **Pause Both**: Pause both videos
-- **Sync Play**: Start both videos with offset synchronization
-- **Reset**: Reset all controls and stop videos
+- **URL Input**: YouTube URLs or video IDs
+- **Start Time**: Where in each video its lane begins
+- **Offset**: Time B starts relative to A (drag the lanes or type it; negative = B first)
+- **BPM / Tap / First beat**: Define a beat grid for a video (YouTube audio can't be analysed, so enter it or tap it)
+- **Timeline**: Drag lanes to shift, click the ruler to move the playhead
+- **Crossfade curve**: Click to add a point, drag to move, double-click (or right-click) to remove; Shift disables snapping
+- **Fade law**: Equal power (constant loudness) or Linear
+- **Volume Sliders**: Master volume per video (the curve scales it)
+- **Play / Pause / Play from start / Reset**
 
 ### Sample Mode Controls
 
