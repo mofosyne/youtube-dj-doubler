@@ -979,6 +979,17 @@ window.addEventListener('DOMContentLoaded', function() {
     });
     window.addEventListener('resize', renderTimeline);
 
+    // Space = play / pause (not while typing in a field)
+    document.addEventListener('keydown', function(e) {
+        if (e.code !== 'Space' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+        const t = e.target;
+        const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) &&
+            !(t.tagName === 'INPUT' && (t.type === 'range' || t.type === 'checkbox'));
+        if (typing) return;
+        e.preventDefault(); // also stops a focused button from being "clicked" again
+        if (mix.playing) pauseBoth(); else playBoth();
+    });
+
     renderTimeline();
     applyVolumes(true);
     loadPendingVideos();
