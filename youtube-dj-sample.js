@@ -4,6 +4,7 @@
 let playerA = null;
 let playerB = null;
 let playersReady = { A: false, B: false };
+let playerCreating = { A: false, B: false };
 
 // Sample storage
 let samples = {
@@ -32,12 +33,14 @@ function onYouTubeIframeAPIReady() {
 }
 
 // Create player
-function createPlayer(containerId, playerId) {
+function createPlayer(containerId, playerId, videoId, startSeconds) {
     return new YT.Player(containerId, {
+        videoId: videoId,
         height: '100%',
         width: '100%',
         playerVars: {
             autoplay: 0,
+            start: Math.floor(startSeconds || 0),
             controls: 1,
             rel: 0,
             modestbranding: 1,
@@ -67,11 +70,6 @@ function onPlayerReady(event, playerId) {
 
     updateStatus(`Player ${playerId} ready`);
 
-    // Load URLs if present
-    const urlInput = document.getElementById(`url${playerId}`);
-    if (urlInput && urlInput.value) {
-        loadVideoFromUrl(playerId, urlInput.value);
-    }
 }
 
 // Player state change
@@ -111,8 +109,18 @@ function loadVideoFromUrl(playerId, url) {
     document.getElementById(`url${playerId}`).value = url;
 
     // Create player if needed
-    if (!playersReady[playerId]) {
-        createPlayer(`player${playerId}`, playerId);
+    const existing = playerId === 'A' ? playerA : playerB;
+    if (!existing) {
+        // Create the player directly with the video (an embed with no video shows a generic error)
+        if (playerCreating[playerId]) return;
+        if (typeof YT === 'undefined' || !YT.Player) {
+            updateStatus('YouTube API is still loading, try again in a moment.');
+            return;
+        }
+        playerCreating[playerId] = true;
+        createPlayer(`player${playerId}`, playerId, videoId, 0);
+        updateStatus(`Loading video ${playerId}`);
+        return;
     }
 
     // Load video
@@ -417,10 +425,6 @@ window.addEventListener('DOMContentLoaded', function() {
     document.getElementById('urlB').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') loadVideo('B');
     });
-    if (typeof YT === 'object' && YT.Player) {
-        createPlayer('playerA', 'A');
-        createPlayer('playerB', 'B');
-    }
     updateStatus('Sample mode ready. Load YouTube videos to start recording samples.');
 });
 

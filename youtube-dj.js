@@ -4,6 +4,7 @@
 let playerA = null;
 let playerB = null;
 let playersReady = { A: false, B: false };
+let playerCreating = { A: false, B: false };
 
 // State management
 let videoState = {
@@ -23,12 +24,14 @@ function onYouTubeIframeAPIReady() {
 }
 
 // Create player for a specific container
-function createPlayer(containerId, playerId) {
+function createPlayer(containerId, playerId, videoId, startSeconds) {
     return new YT.Player(containerId, {
+        videoId: videoId,
         height: '100%',
         width: '100%',
         playerVars: {
             autoplay: 0,
+            start: Math.floor(startSeconds || 0),
             controls: 1,
             rel: 0,
             modestbranding: 1,
@@ -68,13 +71,6 @@ function onPlayerReady(event, playerId) {
 
     updateStatus(`Player ${playerId} ready`);
 
-    // If both players are ready, check if we can load videos
-    if (playersReady.A && playersReady.B) {
-        const urlA = document.getElementById('urlA').value;
-        const urlB = document.getElementById('urlB').value;
-        if (urlA) loadVideoFromUrl('A', urlA);
-        if (urlB) loadVideoFromUrl('B', urlB);
-    }
 }
 
 // Player state change handler
@@ -113,8 +109,18 @@ function loadVideoFromUrl(playerId, url) {
         return;
     }
     videoState[playerId].url = url;
-    if (!playersReady[playerId]) {
-        createPlayer(`player${playerId}`, playerId);
+    const existing = playerId === 'A' ? playerA : playerB;
+    if (!existing) {
+        // Create the player directly with the video (an embed with no video shows a generic error)
+        if (playerCreating[playerId]) return;
+        if (typeof YT === 'undefined' || !YT.Player) {
+            updateStatus('YouTube API is still loading, try again in a moment.');
+            return;
+        }
+        playerCreating[playerId] = true;
+        createPlayer(`player${playerId}`, playerId, videoId, parseFloat(document.getElementById(`start${playerId}`).value) || 0);
+        updateStatus(`Loading video ${playerId}`);
+        return;
     }
     const player = playerId === 'A' ? playerA : playerB;
     if (player) {
@@ -316,10 +322,6 @@ window.addEventListener('DOMContentLoaded', function() {
     document.getElementById('urlB').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') loadVideo('B');
     });
-    if (typeof YT === 'object' && YT.Player) {
-        createPlayer('playerA', 'A');
-        createPlayer('playerB', 'B');
-    }
     updateStatus('Ready to load YouTube videos');
 });
 
