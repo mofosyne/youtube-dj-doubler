@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube DJ Doubler</title>
+    <link rel="stylesheet" href="youtube-dj.css">
+</head>
+<body>
+    <div class="container">
+        <h1>YouTube DJ Doubler</h1>
+
+        <div class="video-section">
+            <div class="video-container">
+                <h2>Video A</h2>
+                <div class="url-input">
+                    <input type="text" id="urlA" placeholder="Enter YouTube URL">
+                    <button onclick="loadVideo('A')">Load</button>
+                </div>
+                <div id="playerA"></div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label for="startA">Start Time (s):</label>
+                        <input type="number" id="startA" value="0" min="0">
+                    </div>
+                    <div class="control-group">
+                        <label for="volumeA">Volume:</label>
+                        <input type="range" id="volumeA" min="0" max="100" value="100">
+                        <span id="volumeValueA">100%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="video-container">
+                <h2>Video B</h2>
+                <div class="url-input">
+                    <input type="text" id="urlB" placeholder="Enter YouTube URL">
+                    <button onclick="loadVideo('B')">Load</button>
+                </div>
+                <div id="playerB"></div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label for="startB">Start Time (s):</label>
+                        <input type="number" id="startB" value="0" min="0">
+                    </div>
+                    <div class="control-group">
+                        <label for="offsetB">Offset from A (s):</label>
+                        <input type="number" id="offsetB" value="0" min="0" step="0.1">
+                    </div>
+                    <div class="control-group">
+                        <label for="volumeB">Volume:</label>
+                        <input type="range" id="volumeB" min="0" max="100" value="100">
+                        <span id="volumeValueB">100%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="crossfade-section">
+            <h2>Crossfade Controls</h2>
+            <div class="crossfade-controls">
+                <label for="crossfade">Crossfade Duration (s):</label>
+                <input type="range" id="crossfade" min="0" max="10" value="2" step="0.1">
+                <span id="crossfadeValue">2s</span>
+            </div>
+            <div class="crossfade-visual">
+                <div class="fade-bar">
+                    <div id="fadeA" class="fade-indicator"></div>
+                    <div id="fadeB" class="fade-indicator"></div>
+                </div>
+                <div class="fade-labels">
+                    <span>A</span>
+                    <span>B</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="playback-controls">
+            <button id="playBoth" onclick="playBoth()">Play Both</button>
+            <button id="pauseBoth" onclick="pauseBoth()">Pause Both</button>
+            <button id="syncPlay" onclick="syncPlay()">Sync Play</button>
+            <button id="reset" onclick="resetPlayers()">Reset</button>
+        </div>
+
+        <div class="status">
+            <p id="statusText"></p>
+        </div>
+    </div>
+
+    <!-- YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="youtube-dj.js"></script>
+</body>
+</html>

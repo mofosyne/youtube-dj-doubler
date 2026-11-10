@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube DJ Doubler - Sample Mode</title>
+    <link rel="stylesheet" href="youtube-dj.css">
+    <style>
+        .sample-mode {
+            background: linear-gradient(135deg, #2d1b4e 0%, #1a1a2e 50%, #0f0f23 100%);
+        }
+
+        .sample-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .sample-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .sample-pad {
+            aspect-ratio: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #444;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            font-size: 10px;
+            text-align: center;
+            color: #fff;
+        }
+
+        .sample-pad:hover {
+            background: rgba(255, 107, 107, 0.2);
+            border-color: #ff6b6b;
+            transform: scale(1.05);
+        }
+
+        .sample-pad.active {
+            background: rgba(255, 107, 107, 0.4);
+            border-color: #ff6b6b;
+            box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+        }
+
+        .sample-pad.playing {
+            animation: pulse 0.5s;
+        }
+
+        .sample-pad .number {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ff6b6b;
+        }
+
+        .sample-pad .start {
+            font-size: 10px;
+            color: #aaa;
+        }
+
+        .sample-pad .duration {
+            font-size: 10px;
+            color: #888;
+        }
+
+        .mode-toggle {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .mode-toggle button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .mode-toggle button.active {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .mode-toggle button:not(.active) {
+            background: rgba(255, 255, 255, 0.1);
+            color: #888;
+        }
+
+        .loop-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .bpm-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .bpm-controls input {
+            width: 80px;
+            padding: 8px;
+            border: 2px solid #444;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .sample-settings {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+
+        .sample-settings h4 {
+            margin-top: 0;
+            color: #ff9f1c;
+        }
+
+        .sample-settings input, .sample-settings select {
+            padding: 6px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body class="sample-mode">
+    <div class="container">
+        <h1>YouTube DJ Doubler - Sample Mode</h1>
+
+        <div class="mode-toggle">
+            <button onclick="switchMode('basic')" id="basicModeBtn">Basic Mode</button>
+            <button onclick="switchMode('sample')" id="sampleModeBtn" class="active">Sample Mode</button>
+        </div>
+
+        <div class="video-section">
+            <div class="video-container">
+                <h2>Source Video A</h2>
+                <div class="url-input">
+                    <input type="text" id="urlA" placeholder="Enter YouTube URL">
+                    <button onclick="loadVideo('A')">Load</button>
+                </div>
+                <div id="playerA"></div>
+                <div class="sample-settings">
+                    <h4>Sample Settings</h4>
+                    <div>
+                        <label>Sample Length (s):</label>
+                        <input type="number" id="sampleLengthA" value="2" min="0.1" step="0.1">
+                    </div>
+                </div>
+            </div>
+
+            <div class="video-container">
+                <h2>Source Video B</h2>
+                <div class="url-input">
+                    <input type="text" id="urlB" placeholder="Enter YouTube URL">
+                    <button onclick="loadVideo('B')">Load</button>
+                </div>
+                <div id="playerB"></div>
+                <div class="sample-settings">
+                    <h4>Sample Settings</h4>
+                    <div>
+                        <label>Sample Length (s):</label>
+                        <input type="number" id="sampleLengthB" value="2" min="0.1" step="0.1">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="crossfade-section">
+            <h2>Sample Controls</h2>
+            <div class="bpm-controls">
+                <label for="bpm">BPM:</label>
+                <input type="number" id="bpm" value="120" min="40" max="200">
+                <button onclick="tapTempo()">Tap Tempo</button>
+                <span id="tempoStatus"></span>
+            </div>
+            <div class="loop-controls">
+                <label>
+                    <input type="checkbox" id="enableLoop" checked>
+                    Enable Loop
+                </label>
+                <label>
+                    <input type="checkbox" id="syncToTempo">
+                    Sync to Tempo
+                </label>
+            </div>
+        </div>
+
+        <div class="sample-section">
+            <h2>Sample Pads</h2>
+            <div class="sample-grid" id="sampleGrid">
+                <!-- Sample pads will be generated here -->
+            </div>
+        </div>
+
+        <div class="playback-controls">
+            <button onclick="playSample(0)">Pad 1</button>
+            <button onclick="playSample(1)">Pad 2</button>
+            <button onclick="playSample(2)">Pad 3</button>
+            <button onclick="playSample(3)">Pad 4</button>
+            <button onclick="stopAllSamples()">Stop All</button>
+            <button onclick="clearAllSamples()">Clear All</button>
+        </div>
+
+        <div class="playback-controls">
+            <button onclick="recordSample('A')">Record Sample A</button>
+            <button onclick="recordSample('B')">Record Sample B</button>
+            <button onclick="playAllSamples()">Play All</button>
+            <button onclick="exportSamples()">Export</button>
+            <button onclick="importSamples()">Import</button>
+        </div>
+
+        <div class="status">
+            <p id="statusText"></p>
+        </div>
+    </div>
+
+    <!-- YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="youtube-dj-sample.js"></script>
+</body>
+</html>

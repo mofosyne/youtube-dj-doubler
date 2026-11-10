@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube DJ Doubler</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e0e0e0;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container { text-align: center; max-width: 600px; padding: 40px; background: rgba(0, 0, 0, 0.5); border-radius: 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); }
+        h1 { color: #ff6b6b; font-size: 3em; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        p { color: #aaa; font-size: 1.1em; line-height: 1.6; margin-bottom: 30px; }
+        .modes { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+        .mode-card { flex: 1; min-width: 200px; background: rgba(255, 255, 255, 0.1); border: 2px solid #444; border-radius: 15px; padding: 30px; cursor: pointer; transition: all 0.3s; text-decoration: none; color: inherit; }
+        .mode-card:hover { border-color: #ff6b6b; transform: translateY(-5px); box-shadow: 0 10px 30px rgba(255, 107, 107, 0.2); }
+        .mode-card h3 { color: #ff9f1c; margin-top: 0; font-size: 1.5em; }
+        .mode-card p { color: #888; font-size: 0.9em; margin-bottom: 15px; }
+        .mode-card .features { list-style: none; padding: 0; margin: 15px 0 0 0; text-align: left; }
+        .mode-card .features li { padding: 5px 0; color: #aaa; font-size: 0.9em; position: relative; padding-left: 20px; }
+        .mode-card .features li:before { content: "✓"; position: absolute; left: 0; color: #26de81; }
+        .mode-card .tag { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 0.7em; background: rgba(255, 107, 107, 0.2); color: #ff6b6b; margin-top: 10px; }
+        .footer { margin-top: 40px; color: #666; font-size: 0.8em; }
+        .footer a { color: #ff6b6b; text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 YouTube DJ Doubler</h1>
+        <p>Create amazing DJ-style mixes with YouTube videos. Choose between two modes: Basic for simple mixing, or Sample for advanced sample-based DJing.</p>
+        <div class="modes">
+            <a href="youtube-dj.html" class="mode-card">
+                <h3>Basic Mode</h3>
+                <p>Simple video mixing with crossfade</p>
+                <ul class="features">
+                    <li>Load two YouTube videos</li>
+                    <li>Adjust start times and offsets</li>
+                    <li>Control volume for each video</li>
+                    <li>Crossfade between videos</li>
+                    <li>Sync playback</li>
+                </ul>
+                <span class="tag">Easy</span>
+            </a>
+            <a href="youtube-dj-sample.html" class="mode-card">
+                <h3>Sample Mode</h3>
+                <p>Advanced sample-based DJing</p>
+                <ul class="features">
+                    <li>Record samples from videos</li>
+                    <li>16 sample pads</li>
+                    <li>BPM and tempo control</li>
+                    <li>Loop and sync options</li>
+                    <li>Export/import samples</li>
+                </ul>
+                <span class="tag">Advanced</span>
+            </a>
+        </div>
+        <div class="footer">
+            <p>Note: YouTube videos must be publicly available and not age-restricted.</p>
+        </div>
+    </div>
+</body>
+</html>
