@@ -104,7 +104,7 @@ h1 {
 
 .controls {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 12px 15px;
     margin-bottom: 15px;
 }
@@ -308,7 +308,7 @@ h1 {
         min-width: 100%;
     }
 
-    .controls { grid-template-columns: 1fr; }
+    .controls { grid-template-columns: minmax(0, 1fr); }
     
     .playback-controls {
         flex-wrap: wrap;
@@ -516,3 +516,10 @@ h1 { font-size: 1.5em; margin: 0 0 8px; }
 
 .control-group.wide { grid-column: 1 / -1; }
 .inline-row button { white-space: nowrap; }
+
+/* let the settings columns shrink instead of overflowing the panel */
+.control-group { min-width: 0; }
+.control-group input[type="number"],
+.control-group input[type="text"] { box-sizing: border-box; width: 100%; min-width: 0; }
+.inline-row input { width: auto; flex: 1; min-width: 0; }
+.control-group label { overflow-wrap: anywhere; }
