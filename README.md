@@ -19,6 +19,13 @@ A web-based application that lets you mix YouTube videos like a DJ, with both ba
 - **Loop Options**: Enable looping for continuous playback
 - **Export/Import**: Save and load your sample collections
 
+## Live Demo
+
+**https://mofosyne.github.io/youtube-dj-doubler/**
+
+Deployed automatically to GitHub Pages by `.github/workflows/pages.yml` on every push to `main`
+(enable it once under Settings → Pages → Source: **GitHub Actions**).
+
 ## Quick Start
 
 1. **Basic Mode**:
@@ -80,9 +87,19 @@ Note: Requires an active internet connection to load YouTube videos.
 
 ## Limitations
 
+- **YouTube error 153 ("video player configuration error")**: YouTube refuses to embed when the page has no
+  valid HTTP referrer, which happens when opening the `.html` files directly via `file://`.
+  Use the live demo above, or serve locally, e.g. `python3 -m http.server` and open `http://localhost:8000`.
+
 - YouTube videos must be publicly accessible
 - Some videos may be blocked due to copyright restrictions
 - Audio playback is subject to YouTube's terms of service
 - Samples are limited by browser memory constraints
 
 ## File Structure
+
+- `index.html` – landing page
+- `youtube-dj.html` / `youtube-dj.js` – basic mode
+- `youtube-dj-sample.html` / `youtube-dj-sample.js` – sample mode
+- `youtube-dj.css` – shared styles
+- `.github/workflows/pages.yml` – GitHub Pages deployment
