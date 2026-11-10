@@ -332,6 +332,7 @@ h1 {
 .timeline-toolbar label { font-size: 14px; color: #aaa; }
 
 .timeline-toolbar select {
+    max-width: 170px;
     padding: 6px;
     border-radius: 6px;
     border: 2px solid #444;

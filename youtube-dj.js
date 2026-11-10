@@ -199,6 +199,11 @@ function curveAt(t) {
 }
 
 function gainsAt(t) {
+    // Monitor overrides for beat checking (not saved, so a reload always starts in Mix)
+    const monitor = $('monitor').value;
+    if (monitor === 'a') return { A: 1, B: 0 };
+    if (monitor === 'b') return { A: 0, B: 1 };
+    if (monitor === 'both') return { A: 1, B: 1 };
     const x = curveAt(t);
     if ($('mixMode').value === 'linear') return { A: 1 - x, B: x };
     return { A: Math.cos(x * Math.PI / 2), B: Math.sin(x * Math.PI / 2) };
@@ -752,6 +757,7 @@ window.addEventListener('DOMContentLoaded', function() {
         $(id).addEventListener('input', renderTimeline);
     });
     $('mixMode').addEventListener('change', () => { applyVolumes(true); scheduleSave(); });
+    $('monitor').addEventListener('change', () => applyVolumes(true));
 
     const svg = $('timeline');
     svg.addEventListener('pointerdown', onTimelineDown);

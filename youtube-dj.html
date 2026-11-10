@@ -35,6 +35,13 @@
                     <option value="equal">Equal power</option>
                     <option value="linear">Linear</option>
                 </select>
+                <label for="monitor">Monitor:</label>
+                <select id="monitor" title="Solo a video or hear both at full volume while checking beats">
+                    <option value="mix">Mix (follow curve)</option>
+                    <option value="a">Solo A</option>
+                    <option value="b">Solo B</option>
+                    <option value="both">Both (no fade)</option>
+                </select>
                 <button class="small-btn" onclick="copyShareLink()">Copy share link</button>
             </div>
             <svg id="timeline" aria-label="Mix timeline"></svg>
