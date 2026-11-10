@@ -493,3 +493,8 @@ h1 { font-size: 1.5em; margin: 0 0 8px; }
 .mini-lane.B { fill: rgba(38, 222, 129, 0.7); }
 .mini-window { fill: rgba(255, 255, 255, 0.15); stroke: rgba(255, 255, 255, 0.7); stroke-width: 1.5; cursor: grab; }
 .mini-playhead { stroke: #fff; stroke-width: 1.5; pointer-events: none; }
+
+.tl-dim { fill: rgba(0, 0, 0, 0.45); pointer-events: none; }
+.tl-range { stroke: #4dd0e1; stroke-width: 1.5; stroke-dasharray: 5 3; pointer-events: none; }
+.tl-range-flag { fill: #4dd0e1; pointer-events: none; }
+#timeline text.tl-range-text { fill: #4dd0e1; font-weight: 600; }

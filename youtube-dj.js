@@ -85,6 +85,18 @@ function laneLength(id) {
     return Math.max(1, (endVideo(id) - startOf(id)) / rateOf(id));
 }
 
+// Overall play range on the mix: the start/end lines across both lanes. 0 = not set
+// (start at 0:00, end when both clips have finished).
+function contentEnd() {
+    const o = origins();
+    return Math.max(o.A + laneLength('A'), o.B + laneLength('B'));
+}
+const mixStart = () => Math.max(0, num('rangeStart'));
+function mixEnd() {
+    const e = num('rangeEnd');
+    return e > 0 ? e : contentEnd();
+}
+
 function fmtTime(t) {
     t = Math.max(0, t);
     const m = Math.floor(t / 60);
@@ -415,6 +427,8 @@ function startMix(t) {
         return;
     }
     clearInterval(mix.timer);
+    // hard limit: playback always stays inside the start/end range
+    if (t < mixStart() - 0.01 || t >= mixEnd()) t = mixStart();
     mix.t = Math.max(0, t);
     mix.tAt0 = mix.t;
     mix.perf0 = performance.now();
@@ -476,15 +490,21 @@ function tick() {
         renderTimeline();
     }
     updatePlayhead();
-    const end = Math.max(o.A + laneLength('A'), o.B + laneLength('B'));
-    if (t > end) {
+    if (t >= mixEnd()) {
         pauseMix();
-        updateStatus('Mix finished');
+        mix.t = mixStart(); // ready to play the range again
+        updatePlayhead();
+        applyVolumes(true);
+        updateStatus('Reached the end of the range');
     }
 }
 
-function playBoth() { startMix(mix.t); }
-function syncPlay() { startMix(0); }
+// Play always stays inside the start/end range: from the playhead if it is inside, else from the start line.
+function playBoth() {
+    const t = mix.t < mixStart() - 0.01 || mix.t >= mixEnd() - 0.05 ? mixStart() : mix.t;
+    startMix(t);
+}
+function syncPlay() { startMix(mixStart()); }
 function pauseBoth() {
     pauseMix();
     updateStatus('Paused');
@@ -496,7 +516,7 @@ function resetPlayers() {
         const p = getPlayer(id);
         if (p && p.seekTo) p.seekTo(startOf(id), true);
     });
-    ['startA', 'startB', 'endA', 'endB', 'offsetB', 'shift', 'beatA', 'beatB'].forEach((id) => { $(id).value = 0; });
+    ['startA', 'startB', 'endA', 'endB', 'offsetB', 'shift', 'rangeStart', 'rangeEnd', 'beatA', 'beatB'].forEach((id) => { $(id).value = 0; });
     ['bpmA', 'bpmB'].forEach((id) => { $(id).value = ''; });
     IDS.forEach((id) => { $('rate' + id).value = 1; applyRate(id); });
     ['A', 'B'].forEach((id) => {
@@ -533,7 +553,7 @@ function timelineExtent() {
     const o = origins();
     const lastPt = curve[curve.length - 1].t;
     // both whole clips (as trimmed), the curve, and the playhead
-    const need = Math.max(60, o.A + laneLength('A'), o.B + laneLength('B'), lastPt + 15, mix.t + 20);
+    const need = Math.max(60, o.A + laneLength('A'), o.B + laneLength('B'), lastPt + 15, mix.t + 20, num('rangeEnd'));
     return Math.ceil(need / 30) * 30;
 }
 
@@ -596,6 +616,26 @@ function renderTimeline() {
             'data-kind': 'point', 'data-index': i
         }, svg);
     });
+
+    // overall start / end lines across both lanes and the curve
+    const rs = mixStart(), re = mixEnd();
+    const xs = xOf(rs), xe = xOf(re);
+    const bottom = LAYOUT.curveY + LAYOUT.curveH;
+    if (xs > 0) el('rect', { x: 0, y: LAYOUT.rulerH, width: Math.min(xs, W), height: bottom - LAYOUT.rulerH, class: 'tl-dim' }, svg);
+    if (xe < W) el('rect', { x: Math.max(xe, 0), y: LAYOUT.rulerH, width: W - Math.max(xe, 0), height: bottom - LAYOUT.rulerH, class: 'tl-dim' }, svg);
+    const rangeLine = (kind, x, label, dir) => {
+        if (x < -2 || x > W + 2) return;
+        el('line', { x1: x, x2: x, y1: 0, y2: bottom, class: 'tl-range' }, svg);
+        el('polygon', { points: `${x},0 ${x + dir * 10},0 ${x},12`, class: 'tl-range-flag' }, svg);
+        const t = el('text', { x: x + dir * 4, y: 21, 'text-anchor': dir > 0 ? 'start' : 'end', class: 'tl-range-text' }, svg);
+        t.textContent = label;
+        const hit = el('rect', { x: x - 9, y: 0, width: 18, height: LAYOUT.rulerH, class: 'tl-handle-hit', 'data-kind': kind }, svg);
+        const tip = document.createElementNS(SVGNS, 'title');
+        tip.textContent = `${label} of the mix: drag to move (Shift = no snapping). Play runs from start to end.`;
+        hit.appendChild(tip);
+    };
+    rangeLine('rangestart', xs, 'start', 1);
+    rangeLine('rangeend', xe, 'end', -1);
 
     // playhead
     view.playhead = el('line', { y1: 0, y2: LAYOUT.H, class: 'tl-playhead' }, svg);
@@ -792,6 +832,8 @@ function onTimelineDown(e) {
             s0: startOf(id),                 // start point (seconds into the clip)
             other: o[id === 'A' ? 'B' : 'A'] // the other lane stays put
         };
+    } else if (kind === 'rangestart' || kind === 'rangeend') {
+        drag = { kind, extent: view.extent };
     } else if (kind === 'trimstart' || kind === 'trimend') {
         const id = e.target.dataset.id;
         drag = {
@@ -922,6 +964,32 @@ function onTimelineMove(e) {
         if (drag.id === 'B') applyOrigins(drag.other, Math.max(0, drag.other + off));
         else applyOrigins(Math.max(0, drag.other - off), drag.other);
         renderTimeline();
+    } else if (drag.kind === 'rangestart' || drag.kind === 'rangeend') {
+        let t = tOf(svgX(e));
+        if (!e.shiftKey) {
+            // snap to markers and beats of either clip, within ~8px
+            const tol = 8 / view.pps;
+            let best = t, bestD = tol;
+            IDS.forEach((id) => {
+                markers[id].forEach((m) => {
+                    const mt = origins()[id] + (m - startOf(id)) / rateOf(id);
+                    if (Math.abs(mt - t) < bestD) { best = mt; bestD = Math.abs(mt - t); }
+                });
+                if (bpmOf(id) > 0) {
+                    const bt = nearestBeatMix(id, t);
+                    if (Math.abs(bt - t) < bestD) { best = bt; bestD = Math.abs(bt - t); }
+                }
+            });
+            t = best;
+        }
+        if (drag.kind === 'rangestart') {
+            t = clamp(t, 0, mixEnd() - 0.5);
+            $('rangeStart').value = t < 0.01 ? 0 : Math.round(t * 1000) / 1000;
+        } else {
+            t = Math.max(t, mixStart() + 0.5);
+            $('rangeEnd').value = t >= contentEnd() - 0.01 ? 0 : Math.round(t * 1000) / 1000; // at the very end = not set
+        }
+        renderTimeline();
     } else if (drag.kind === 'trimstart' || drag.kind === 'trimend') {
         const id = drag.id;
         const rate = rateOf(id);
@@ -975,7 +1043,7 @@ function onTimelineUp() {
 
 // ---------- saved settings (localStorage + shareable link) ----------
 const STORAGE_KEY = 'ytdj-basic-v1';
-const SETTING_FIELDS = ['startA', 'startB', 'endA', 'endB', 'offsetB', 'shift', 'bpmA', 'bpmB', 'beatA', 'beatB', 'rateA', 'rateB'];
+const SETTING_FIELDS = ['startA', 'startB', 'endA', 'endB', 'offsetB', 'shift', 'rangeStart', 'rangeEnd', 'bpmA', 'bpmB', 'beatA', 'beatB', 'rateA', 'rateB'];
 let saveTimer = null;
 const pendingLoad = {}; // video ids restored from settings, loaded once the YT API is ready
 
@@ -993,7 +1061,7 @@ function collectSettings() {
 
 // Compact hash format, e.g.  #a=ViMftVmc3Ts&b=yt1polx2D_4&o=3.5&bb=128&c=0:0,20:0,30:1
 // Anything left at its default is omitted. (Old #s=<json> links are still read.)
-const HASH_FIELDS = { startA: 'sa', startB: 'sb', endA: 'ea', endB: 'eb', offsetB: 'o', shift: 'sh', bpmA: 'ba', bpmB: 'bb', beatA: 'fa', beatB: 'fb', rateA: 'ra', rateB: 'rb' };
+const HASH_FIELDS = { startA: 'sa', startB: 'sb', endA: 'ea', endB: 'eb', offsetB: 'o', shift: 'sh', rangeStart: 'rs', rangeEnd: 're', bpmA: 'ba', bpmB: 'bb', beatA: 'fa', beatB: 'fb', rateA: 'ra', rateB: 'rb' };
 
 function encodeHash(s) {
     const parts = [];
@@ -1075,6 +1143,7 @@ function applySettings(s) {
         markers[id] = Array.isArray(list) ? list.filter((v) => isFinite(v) && v >= 0).map(Number).sort((a, b) => a - b) : [];
     });
     if (s.mode === 'linear' || s.mode === 'equal') $('mixMode').value = s.mode;
+    mix.t = mixStart();
     if (Array.isArray(s.curve) && s.curve.length >= 2 &&
         s.curve.every((p) => isFinite(p.t) && isFinite(p.x))) {
         curve = s.curve.map((p) => ({ t: Math.max(0, +p.t), x: clamp(+p.x, 0, 1) }))
