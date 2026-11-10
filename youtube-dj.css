@@ -458,3 +458,15 @@ h1 { font-size: 1.5em; margin: 0 0 8px; }
 .tl-marker-flag.target { fill: #ff6b6b; }
 .instructions a { color: #ff9f1c; }
 .instructions a:hover { color: #ffd166; }
+
+.player-msg {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.88);
+    color: #ffd166;
+    font-size: 12px;
+    line-height: 1.4;
+    z-index: 2;
+}
+.player-msg a { color: #ff9f1c; white-space: nowrap; }

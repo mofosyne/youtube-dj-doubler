@@ -148,6 +148,36 @@ function onPlayerError(event, playerId) {
     console.error(`Player ${playerId} error:`, event.data);
     const why = ERROR_TEXT[event.data] ? ` - ${ERROR_TEXT[event.data]}` : '';
     updateStatus(`Error loading video ${playerId}: ${event.data}${why}`);
+    showPlayerMessage(playerId, event.data);
+}
+
+// Show the problem on the video itself (the status line is easy to miss).
+function showPlayerMessage(playerId, code) {
+    clearPlayerMessage(playerId);
+    const frame = document.getElementById('player' + playerId); // the iframe that replaced the div
+    if (!frame || !frame.parentElement) return;
+    const blocked = code === 101 || code === 150;
+    const box = document.createElement('div');
+    box.className = 'player-msg';
+    box.dataset.player = playerId;
+    box.textContent = blocked
+        ? "This video can't be embedded: the owner turned embedding off. Try another upload of the track " +
+          "(auto-generated \"Topic\" and label uploads are often blocked). "
+        : `YouTube could not play this video (${ERROR_TEXT[code] || 'error ' + code}). `;
+    const vid = extractVideoId(videoState[playerId].url);
+    if (vid) {
+        const a = document.createElement('a');
+        a.href = `https://www.youtube.com/watch?v=${vid}`;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = 'Open on YouTube';
+        box.appendChild(a);
+    }
+    frame.parentElement.appendChild(box);
+}
+
+function clearPlayerMessage(playerId) {
+    document.querySelectorAll(`.player-msg[data-player="${playerId}"]`).forEach((n) => n.remove());
 }
 
 function loadVideo(playerId) {
@@ -166,6 +196,7 @@ function loadVideoFromUrl(playerId, url) {
         return;
     }
     videoState[playerId].url = url;
+    clearPlayerMessage(playerId);
     scheduleSave();
     videoState[playerId].duration = 0;
     $(`url${playerId}`).value = url;
@@ -704,11 +735,15 @@ function onTimelineDown(e) {
         let start = markers[id][parseInt(e.target.dataset.index, 10)];
         const dur = videoState[id].duration;
         if (dur > 0) start = Math.min(start, dur - 1);
+        // Keep the clip lined up with the other one: cutting off the front moves the lane's
+        // left edge forward by the cut length, so the music still sits where it was.
+        const cut = Math.max(0, (start - startOf(id)) / rateOf(id));
+        $('offsetB').value = Math.round((getOffset() + (id === 'B' ? cut : -cut)) * 1000) / 1000;
         $('start' + id).value = start;
         selectedMarker = null;
         syncFrom = null;
         renderTimeline();
-        updateStatus(`Video ${id} now starts at ${fmtTime(start)}`);
+        updateStatus(`Video ${id} now starts at ${fmtTime(start)} (still lined up with the other clip)`);
     } else if (kind === 'ruler') {
         drag = { kind, wasPlaying: mix.playing };
         if (mix.playing) pauseMix();
