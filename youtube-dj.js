@@ -847,7 +847,10 @@ function drawLane(svg, id, y, origin) {
             if (canSync) pill('marksync', syncFrom ? 'Pick target\u2026' : 'Sync to\u2026', px + 72, 78);
         }
     }
-    const label = el('text', { x: Math.max(x0, LAYOUT.pad) + 6, y: y + 21 }, svg);
+    // keep the label clear of the dimmed area and the clip flag: start it at the play-range start when that is inside the lane
+    const rangeX = xOf(mixStart());
+    const labelX = (rangeX > x0 && rangeX < x0 + w - 60 ? rangeX : Math.max(x0, LAYOUT.pad)) + 14;
+    const label = el('text', { x: labelX, y: y + 21 }, svg);
     const st = startOf(id);
     const notes = [];
     if (st > 0) notes.push(`starts at ${fmtTime(st)}`);

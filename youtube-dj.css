@@ -513,3 +513,6 @@ h1 { font-size: 1.5em; margin: 0 0 8px; }
 }
 .player-loading[hidden] { display: none; }
 .playback-controls button:disabled { opacity: 0.5; cursor: wait; transform: none; box-shadow: none; }
+
+.control-group.wide { grid-column: 1 / -1; }
+.inline-row button { white-space: nowrap; }
