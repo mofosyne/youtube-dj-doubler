@@ -30,7 +30,8 @@ h1 {
 
 .video-container {
     flex: 1;
-    min-width: 400px;
+    min-width: 0;
+    max-width: 100%;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 15px;
     padding: 20px;
@@ -81,13 +82,24 @@ h1 {
     background: #ff5252;
 }
 
-#playerA, #playerB {
+.player-wrap {
+    position: relative;
     width: 100%;
     aspect-ratio: 16/9;
     background: #000;
     border-radius: 10px;
     margin-bottom: 15px;
     overflow: hidden;
+}
+
+/* The YouTube API replaces #playerX with an iframe; fill the wrapper */
+.player-wrap iframe,
+.player-wrap > div {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
 }
 
 .controls {
