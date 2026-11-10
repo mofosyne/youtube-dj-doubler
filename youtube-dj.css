@@ -103,10 +103,22 @@ h1 {
 }
 
 .controls {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 15px;
+    margin-bottom: 15px;
 }
+
+.beat-settings {
+    grid-column: 1 / -1;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.beat-settings summary { cursor: pointer; color: #aaa; font-size: 14px; }
+.beat-settings[open] summary { margin-bottom: 10px; }
+.beat-settings .control-group + .control-group { margin-top: 10px; }
 
 .control-group {
     display: flex;
@@ -295,6 +307,8 @@ h1 {
     .video-container {
         min-width: 100%;
     }
+
+    .controls { grid-template-columns: 1fr; }
     
     .playback-controls {
         flex-wrap: wrap;
@@ -370,3 +384,14 @@ h1 {
     cursor: pointer;
 }
 .inline-row button:hover { background: #666; }
+
+.small-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    background: #444;
+    color: #fff;
+    cursor: pointer;
+    margin-left: auto;
+}
+.small-btn:hover { background: #666; }

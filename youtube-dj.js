@@ -76,6 +76,7 @@ function updateStatus(message) {
 function onYouTubeIframeAPIReady() {
     console.log('YouTube IFrame API ready');
     updateStatus('YouTube API loaded. Enter URLs and click Load.');
+    loadPendingVideos();
 }
 
 function createPlayer(containerId, playerId, videoId, startSeconds) {
@@ -156,6 +157,7 @@ function loadVideoFromUrl(playerId, url) {
         return;
     }
     videoState[playerId].url = url;
+    scheduleSave();
     videoState[playerId].duration = 0;
     $(`url${playerId}`).value = url;
 
@@ -439,6 +441,7 @@ function renderTimeline() {
     // playhead
     view.playhead = el('line', { y1: 0, y2: LAYOUT.H, class: 'tl-playhead' }, svg);
     updatePlayhead();
+    scheduleSave();
 }
 
 function drawLane(svg, id, y, origin) {
@@ -568,13 +571,103 @@ function onTimelineUp() {
     drag = null;
 }
 
+// ---------- saved settings (localStorage + shareable link) ----------
+const STORAGE_KEY = 'ytdj-basic-v1';
+const SETTING_FIELDS = ['startA', 'startB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB'];
+let saveTimer = null;
+const pendingLoad = {}; // video ids restored from settings, loaded once the YT API is ready
+
+function collectSettings() {
+    const round3 = (v) => Math.round(v * 1000) / 1000;
+    const s = { f: {}, vol: {}, ids: {}, mode: $('mixMode').value,
+                curve: curve.map((p) => ({ t: round3(p.t), x: round3(p.x) })) };
+    SETTING_FIELDS.forEach((id) => { s.f[id] = $(id).value; });
+    IDS.forEach((id) => {
+        s.vol[id] = videoState[id].volume;
+        s.ids[id] = extractVideoId($('url' + id).value.trim()) || '';
+    });
+    return s;
+}
+
+function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+        const json = JSON.stringify(collectSettings());
+        try { localStorage.setItem(STORAGE_KEY, json); } catch (e) { /* storage unavailable */ }
+        // Keep the address bar in sync so the page URL is always a share link
+        try { history.replaceState(null, '', `#s=${encodeURIComponent(json)}`); } catch (e) { /* e.g. file:// */ }
+    }, 300);
+}
+
+function applySettings(s) {
+    if (!s || typeof s !== 'object') return;
+    SETTING_FIELDS.forEach((id) => {
+        if (s.f && s.f[id] !== undefined) $(id).value = s.f[id];
+    });
+    IDS.forEach((id) => {
+        const v = s.vol && parseInt(s.vol[id], 10);
+        if (!isNaN(v)) {
+            videoState[id].volume = clamp(v, 0, 100);
+            $('volume' + id).value = videoState[id].volume;
+            $('volumeValue' + id).textContent = `${videoState[id].volume}%`;
+        }
+        const vid = s.ids && s.ids[id];
+        if (typeof vid === 'string' && /^[\w-]{11}$/.test(vid)) {
+            $('url' + id).value = `https://youtu.be/${vid}`;
+            pendingLoad[id] = vid;
+        }
+    });
+    if (s.mode === 'linear' || s.mode === 'equal') $('mixMode').value = s.mode;
+    if (Array.isArray(s.curve) && s.curve.length >= 2 &&
+        s.curve.every((p) => isFinite(p.t) && isFinite(p.x))) {
+        curve = s.curve.map((p) => ({ t: Math.max(0, +p.t), x: clamp(+p.x, 0, 1) }))
+                       .sort((a, b) => a.t - b.t);
+    }
+}
+
+function loadSavedSettings() {
+    try {
+        const m = location.hash.match(/^#s=(.+)$/);
+        if (m) { applySettings(JSON.parse(decodeURIComponent(m[1]))); return; }
+    } catch (e) { /* bad link: fall back to local storage */ }
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) applySettings(JSON.parse(raw));
+    } catch (e) { /* ignore */ }
+}
+
+function loadPendingVideos() {
+    if (typeof YT === 'undefined' || !YT.Player) return;
+    IDS.forEach((id) => {
+        if (pendingLoad[id]) {
+            const vid = pendingLoad[id];
+            delete pendingLoad[id];
+            loadVideoFromUrl(id, `https://youtu.be/${vid}`);
+        }
+    });
+}
+
+function copyShareLink() {
+    clearTimeout(saveTimer);
+    const link = `${location.origin}${location.pathname}#s=${encodeURIComponent(JSON.stringify(collectSettings()))}`;
+    const done = () => updateStatus('Share link copied to clipboard');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(done, () => window.prompt('Copy this link:', link));
+    } else {
+        window.prompt('Copy this link:', link);
+    }
+}
+
 // ---------- wiring ----------
 window.addEventListener('DOMContentLoaded', function() {
+    loadSavedSettings();
+
     ['A', 'B'].forEach((id) => {
         $('volume' + id).addEventListener('input', function() {
             $('volumeValue' + id).textContent = `${this.value}%`;
             videoState[id].volume = parseInt(this.value, 10);
             applyVolumes(true);
+            scheduleSave();
         });
         $('url' + id).addEventListener('keypress', function(e) {
             if (e.key === 'Enter') loadVideo(id);
@@ -584,7 +677,7 @@ window.addEventListener('DOMContentLoaded', function() {
     ['startA', 'startB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB'].forEach((id) => {
         $(id).addEventListener('input', renderTimeline);
     });
-    $('mixMode').addEventListener('change', () => applyVolumes(true));
+    $('mixMode').addEventListener('change', () => { applyVolumes(true); scheduleSave(); });
 
     const svg = $('timeline');
     svg.addEventListener('pointerdown', onTimelineDown);
@@ -601,6 +694,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
     renderTimeline();
     applyVolumes(true);
+    loadPendingVideos();
     updateStatus('Ready to load YouTube videos');
 });
 
@@ -613,3 +707,4 @@ window.syncPlay = syncPlay;
 window.resetPlayers = resetPlayers;
 window.tapTempo = tapTempo;
 window.setFirstBeat = setFirstBeat;
+window.copyShareLink = copyShareLink;

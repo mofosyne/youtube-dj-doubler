@@ -19,6 +19,7 @@
                     <option value="equal">Equal power</option>
                     <option value="linear">Linear</option>
                 </select>
+                <button class="small-btn" onclick="copyShareLink()">Copy share link</button>
             </div>
             <p class="hint">Drag the A / B lanes to shift them &middot; click the ruler to move the playhead &middot;
                 click the curve to add a point, drag to move it, double-click to remove &middot; hold Shift for fine control.
@@ -46,16 +47,18 @@
         <div class="video-section">
             <div class="video-container">
                 <h2>Video A</h2>
-                <div class="url-input">
-                    <input type="text" id="urlA" placeholder="Enter YouTube URL">
-                    <button onclick="loadVideo('A')">Load</button>
-                </div>
-                <div class="player-wrap"><div id="playerA"></div></div>
                 <div class="controls">
                     <div class="control-group">
                         <label for="startA">Start Time (s):</label>
                         <input type="number" id="startA" value="0" min="0">
                     </div>
+                    <div class="control-group">
+                        <label for="volumeA">Volume:</label>
+                        <input type="range" id="volumeA" min="0" max="100" value="100">
+                        <span id="volumeValueA">100%</span>
+                    </div>
+                    <details class="beat-settings">
+                        <summary>Beat grid (BPM)</summary>
                     <div class="control-group">
                         <label for="bpmA">BPM (optional, enables beat grid &amp; snapping):</label>
                         <div class="inline-row">
@@ -70,21 +73,17 @@
                             <button onclick="setFirstBeat('A')">Set to current</button>
                         </div>
                     </div>
-                    <div class="control-group">
-                        <label for="volumeA">Volume:</label>
-                        <input type="range" id="volumeA" min="0" max="100" value="100">
-                        <span id="volumeValueA">100%</span>
-                    </div>
+                    </details>
                 </div>
+                <div class="url-input">
+                    <input type="text" id="urlA" placeholder="Enter YouTube URL">
+                    <button onclick="loadVideo('A')">Load</button>
+                </div>
+                <div class="player-wrap"><div id="playerA"></div></div>
             </div>
 
             <div class="video-container">
                 <h2>Video B</h2>
-                <div class="url-input">
-                    <input type="text" id="urlB" placeholder="Enter YouTube URL">
-                    <button onclick="loadVideo('B')">Load</button>
-                </div>
-                <div class="player-wrap"><div id="playerB"></div></div>
                 <div class="controls">
                     <div class="control-group">
                         <label for="startB">Start Time (s):</label>
@@ -94,6 +93,13 @@
                         <label for="offsetB">Offset from A (s, negative = B starts first):</label>
                         <input type="number" id="offsetB" value="0" step="0.01">
                     </div>
+                    <div class="control-group">
+                        <label for="volumeB">Volume:</label>
+                        <input type="range" id="volumeB" min="0" max="100" value="100">
+                        <span id="volumeValueB">100%</span>
+                    </div>
+                    <details class="beat-settings">
+                        <summary>Beat grid (BPM)</summary>
                     <div class="control-group">
                         <label for="bpmB">BPM (optional, enables beat grid &amp; snapping):</label>
                         <div class="inline-row">
@@ -108,12 +114,13 @@
                             <button onclick="setFirstBeat('B')">Set to current</button>
                         </div>
                     </div>
-                    <div class="control-group">
-                        <label for="volumeB">Volume:</label>
-                        <input type="range" id="volumeB" min="0" max="100" value="100">
-                        <span id="volumeValueB">100%</span>
-                    </div>
+                    </details>
                 </div>
+                <div class="url-input">
+                    <input type="text" id="urlB" placeholder="Enter YouTube URL">
+                    <button onclick="loadVideo('B')">Load</button>
+                </div>
+                <div class="player-wrap"><div id="playerB"></div></div>
             </div>
         </div>
 
