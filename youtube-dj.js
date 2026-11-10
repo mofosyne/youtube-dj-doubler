@@ -893,7 +893,7 @@ function fitTimeline() {
     renderTimeline();
 }
 
-const MINI_H = 18;
+const MINI_H = 24;
 let miniDrag = null;
 
 function renderMinimap() {
@@ -906,13 +906,27 @@ function renderMinimap() {
     const k = W / view.extent;
     const o = origins();
     el('rect', { x: 0, y: 0, width: W, height: MINI_H, rx: 4, class: 'mini-bg' }, mini);
-    el('rect', { x: o.A * k, y: 3, width: laneLength('A') * k, height: 5, class: 'mini-lane A' }, mini);
-    el('rect', { x: o.B * k, y: 10, width: laneLength('B') * k, height: 5, class: 'mini-lane B' }, mini);
-    el('rect', {
-        x: view.t0 * k, y: 0, width: Math.max(6, view.span * k), height: MINI_H, rx: 4,
-        class: 'mini-window', 'data-kind': 'miniwin'
-    }, mini);
+    el('rect', { x: o.A * k, y: 5, width: laneLength('A') * k, height: 5, class: 'mini-lane A' }, mini);
+    el('rect', { x: o.B * k, y: 13, width: laneLength('B') * k, height: 5, class: 'mini-lane B' }, mini);
+    const tx = view.t0 * k, tw = Math.max(14, view.span * k);
+    el('rect', { x: tx, y: 1, width: tw, height: MINI_H - 2, rx: 5, class: 'mini-window' }, mini);
+    [tx + 4, tx + tw - 4].forEach((gx) => el('line', { x1: gx, x2: gx, y1: 6, y2: MINI_H - 6, class: 'mini-grip' }, mini));
     el('line', { x1: mix.t * k, x2: mix.t * k, y1: 0, y2: MINI_H, class: 'mini-playhead' }, mini);
+}
+
+function panPage(dir) { panBy(dir * view.span * 0.25); }
+
+// Which part of the scrollbar thumb is under the pointer: its left/right end (drag = zoom) or its body (drag = move).
+function miniZone(e) {
+    const mini = $('minimap');
+    const W = Math.max(100, mini.clientWidth);
+    const k = W / view.extent;
+    const x = e.clientX - mini.getBoundingClientRect().left;
+    const x0 = view.t0 * k, x1 = (view.t0 + view.span) * k;
+    const edge = 7;
+    if (Math.abs(x - x0) <= edge) return 'left';
+    if (Math.abs(x - x1) <= edge) return 'right';
+    return x > x0 && x < x1 ? 'body' : 'track';
 }
 
 function miniT(e) {
@@ -1351,32 +1365,54 @@ window.addEventListener('DOMContentLoaded', function() {
     });
     window.addEventListener('resize', renderTimeline);
 
-    // zoom: Ctrl/Cmd + scroll (or pinch); pan: Shift + scroll or sideways scroll. Plain scroll still scrolls the page.
+    // Scroll wheel over the timeline zooms (pinch too); Shift + scroll or sideways scroll pans.
+    // Fully zoomed out, scrolling down is left alone so the page can still scroll.
     svg.addEventListener('wheel', function(e) {
-        if (e.ctrlKey || e.metaKey) {
+        const unit = e.deltaMode === 1 ? 16 : 1; // lines -> pixels
+        if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
             e.preventDefault();
-            zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, tOf(svgX(e)));
-        } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-            e.preventDefault();
-            panBy((e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) / view.pps);
+            panBy(((e.deltaX || e.deltaY) * unit) / view.pps);
+            return;
         }
+        const zoomIn = e.deltaY < 0;
+        if (!zoomIn && view.fit) return;
+        e.preventDefault();
+        zoomBy(Math.exp(-e.deltaY * unit * 0.0016), tOf(svgX(e)));
     }, { passive: false });
 
     const mini = $('minimap');
     mini.addEventListener('pointerdown', function(e) {
         mini.setPointerCapture(e.pointerId);
-        let t = miniT(e);
-        if (t < view.t0 || t > view.t0 + view.span) { // clicked outside the window: centre it there
+        const zone = miniZone(e);
+        if (zone === 'track') { // clicked the empty track: centre the view there
             view.fit = view.span >= view.extent - 0.001;
-            view.t0 = clamp(t - view.span / 2, 0, Math.max(0, view.extent - view.span));
+            view.t0 = clamp(miniT(e) - view.span / 2, 0, Math.max(0, view.extent - view.span));
             renderTimeline();
         }
-        miniDrag = { grab: miniT(e) - view.t0 };
+        miniDrag = {
+            zone: zone === 'track' ? 'body' : zone,
+            grab: miniT(e) - view.t0,
+            t1: view.t0 + view.span
+        };
     });
     mini.addEventListener('pointermove', function(e) {
-        if (!miniDrag || view.span >= view.extent - 0.001) return;
-        view.fit = false;
-        view.t0 = clamp(miniT(e) - miniDrag.grab, 0, Math.max(0, view.extent - view.span));
+        if (!miniDrag) { // hover: show what a drag would do
+            const z = miniZone(e);
+            mini.style.cursor = z === 'left' || z === 'right' ? 'ew-resize' : z === 'body' ? 'grab' : 'pointer';
+            return;
+        }
+        const t = miniT(e);
+        if (miniDrag.zone === 'left') {
+            const t0 = clamp(t, 0, miniDrag.t1 - 2);
+            view.span = miniDrag.t1 - t0;
+            view.t0 = t0;
+        } else if (miniDrag.zone === 'right') {
+            view.span = clamp(t - view.t0, 2, view.extent - view.t0);
+        } else {
+            if (view.span >= view.extent - 0.001) return;
+            view.t0 = clamp(t - miniDrag.grab, 0, Math.max(0, view.extent - view.span));
+        }
+        view.fit = view.span >= view.extent - 0.001;
         renderTimeline();
     });
     ['pointerup', 'pointercancel'].forEach((n) => mini.addEventListener(n, () => { miniDrag = null; }));
@@ -1422,6 +1458,7 @@ window.setFirstBeat = setFirstBeat;
 window.toggleSolo = toggleSolo;
 window.zoomBy = zoomBy;
 window.fitTimeline = fitTimeline;
+window.panPage = panPage;
 window.matchTempo = matchTempo;
 window.addMarker = addMarker;
 window.clearMarkers = clearMarkers;

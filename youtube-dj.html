@@ -52,7 +52,9 @@
                 <button class="nav-btn" onclick="zoomBy(1 / 1.5)" title="Zoom out (Ctrl + scroll)">&minus;</button>
                 <button class="nav-btn" onclick="zoomBy(1.5)" title="Zoom in (Ctrl + scroll)">+</button>
                 <button class="nav-btn" onclick="fitTimeline()" title="Show both whole clips">Fit</button>
-                <svg id="minimap" aria-label="Timeline overview: drag to move"></svg>
+                <button class="nav-btn" onclick="panPage(-1)" title="Move left">&#9664;</button>
+                <svg id="minimap" aria-label="Timeline scrollbar: drag the bar to move, drag its ends to zoom"></svg>
+                <button class="nav-btn" onclick="panPage(1)" title="Move right">&#9654;</button>
             </div>
             <div class="crossfade-visual">
                 <div class="fade-bar">
@@ -195,7 +197,7 @@
                 <li><strong>Load videos:</strong> paste a YouTube URL for A and B and press Load. Each video is pre-loaded (briefly started muted, then paused) and Play stays locked until they are ready, so both start together.</li>
                 <li><strong>Start / end flags:</strong> every lane has a flag at each end. Drag the left one to choose where the clip starts and the right one to choose where it stops; the music stays lined up and the flags snap to that clip&rsquo;s own beats and markers (Shift = free).</li>
                 <li><strong>Start / end of the mix:</strong> the cyan flags in the ruler mark where the whole mix starts and ends. Drag them (they snap to beats and markers; Shift = free). Play is limited to that range: it always starts at the start flag (or the playhead if it is inside) and stops at the end flag.</li>
-                <li><strong>Zoom &amp; move:</strong> the timeline starts zoomed to show both whole clips. Use &minus; / + (or Ctrl + scroll) to zoom, Shift + scroll or the strip under the timeline to move, and Fit to see everything again.</li>
+                <li><strong>Zoom &amp; move:</strong> scroll the mouse wheel over the timeline to zoom (or use &minus; / +), and Shift + scroll or the scrollbar under it to move: drag the bar, click the track or the arrows, and drag the bar&rsquo;s ends to zoom. Fit shows both whole clips again. When fully zoomed out, scrolling down scrolls the page.</li>
                 <li><strong>Align:</strong> drag the A / B lanes on the timeline to shift them (Shift = fine). Negative offsets mean B starts first.</li>
                 <li><strong>Beat match (optional):</strong> open &ldquo;Beat grid&rdquo;, enter or tap each BPM and set Beat 1 position.
                     Lanes then snap so beats line up.</li>
