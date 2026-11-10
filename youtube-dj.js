@@ -51,6 +51,13 @@ const beatOf = (id) => num('beat' + id);
 const getOffset = () => num('offsetB');
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+// Playback speed of a video (1 = normal). A lane's length on the mix timeline is its
+// video length divided by this, and video time -> mix time is (v - start) / rate.
+function rateOf(id) {
+    const r = parseFloat($('rate' + id).value);
+    return isFinite(r) && r > 0 ? clamp(r, 0.25, 2) : 1;
+}
+
 function origins() {
     const o = getOffset();
     return { A: Math.max(0, -o), B: Math.max(0, o) };
@@ -58,7 +65,7 @@ function origins() {
 
 function laneLength(id) {
     const d = videoState[id].duration;
-    return Math.max(1, d > 0 ? d - startOf(id) : DEFAULT_LANE_SECONDS);
+    return Math.max(1, (d > 0 ? d - startOf(id) : DEFAULT_LANE_SECONDS) / rateOf(id));
 }
 
 function fmtTime(t) {
@@ -110,6 +117,7 @@ function onPlayerReady(event, playerId) {
     if (playerId === 'A') playerA = event.target; else playerB = event.target;
     updateDuration(playerId);
     applyVolumes(true);
+    applyRate(playerId);
     updateStatus(`Player ${playerId} ready`);
 }
 
@@ -229,8 +237,8 @@ function applyVolumes(force) {
 function nearestBeatMix(id, t) {
     const bpm = bpmOf(id);
     if (bpm <= 0) return t;
-    const p = 60 / bpm;
-    const base = origins()[id] + beatOf(id) - startOf(id); // mix time of beat 0
+    const p = 60 / bpm / rateOf(id);                         // beat spacing on the mix timeline
+    const base = origins()[id] + (beatOf(id) - startOf(id)) / rateOf(id); // mix time of beat 0
     const k = Math.round((t - base) / p);
     return base + k * p;
 }
@@ -239,14 +247,15 @@ function nearestBeatMix(id, t) {
 function snapOffset(raw, fine) {
     const bpmA = bpmOf('A'), bpmB = bpmOf('B');
     if (!fine && bpmA > 0 && bpmB > 0) {
+        const rA = rateOf('A'), rB = rateOf('B');
         const pB = 60 / bpmB;
         const bOrigin = Math.max(0, raw);
         const k0 = Math.ceil((startOf('B') - beatOf('B')) / pB);
-        const bFirst = bOrigin + beatOf('B') + k0 * pB - startOf('B');
-        const pA = 60 / bpmA;
+        const bFirst = bOrigin + (beatOf('B') + k0 * pB - startOf('B')) / rB;
+        const pAm = 60 / bpmA / rA;                       // A's beat spacing on the mix timeline
         const aOrigin = Math.max(0, -raw);
-        const j = Math.round((bFirst - aOrigin - beatOf('A') + startOf('A')) / pA);
-        const aBeat = aOrigin + beatOf('A') + j * pA - startOf('A');
+        const aBase = aOrigin + (beatOf('A') - startOf('A')) / rA;
+        const aBeat = aBase + Math.round((bFirst - aBase) / pAm) * pAm;
         return Math.round((raw - (bFirst - aBeat)) * 1000) / 1000;
     }
     const step = fine ? 0.01 : 0.1;
@@ -298,6 +307,7 @@ function addMarker(id) {
 function clearMarkers(id) {
     markers[id] = [];
     selectedMarker = null;
+    syncFrom = null;
     renderTimeline();
 }
 
@@ -309,6 +319,45 @@ function setFirstBeat(id) {
     }
     $('beat' + id).value = p.getCurrentTime().toFixed(2);
     renderTimeline();
+}
+
+// ---------- speed & tempo matching ----------
+// YouTube only accepts the speeds it offers (usually 0.25 steps), so after asking for a
+// speed we read back what the player really took and show that.
+function applyRate(id, done) {
+    const p = getPlayer(id);
+    if (!p || !p.setPlaybackRate) { if (done) done(); return; }
+    const want = rateOf(id);
+    p.setPlaybackRate(want);
+    setTimeout(() => {
+        const got = p.getPlaybackRate ? p.getPlaybackRate() : want;
+        if (got && Math.abs(got - want) > 0.001) {
+            $('rate' + id).value = got;
+            renderTimeline();
+        }
+        if (mix.playing) startMix(mix.t); // re-sync the lanes at the new speed
+        if (done) done();
+    }, 150);
+}
+
+// Set this video's speed so its (BPM x speed) equals the other video's.
+function matchTempo(id) {
+    const other = id === 'A' ? 'B' : 'A';
+    if (bpmOf(id) <= 0 || bpmOf(other) <= 0) {
+        updateStatus('Set the BPM of both videos first (Beat grid section)');
+        return;
+    }
+    const target = bpmOf(other) * rateOf(other);
+    const rate = clamp(target / bpmOf(id), 0.25, 2);
+    $('rate' + id).value = Math.round(rate * 1000) / 1000;
+    renderTimeline();
+    applyRate(id, () => {
+        const mine = bpmOf(id) * rateOf(id);
+        const off = Math.abs(mine - target) / target * 100;
+        updateStatus(`Video ${id} at \u00d7${Math.round(rateOf(id) * 1000) / 1000} = ${mine.toFixed(1)} BPM, ` +
+            `video ${other} = ${target.toFixed(1)} BPM` +
+            (off > 0.3 ? ` (${off.toFixed(1)}% apart - closest speed YouTube allows)` : ' (matched)'));
+    });
 }
 
 // ---------- playback engine ----------
@@ -351,7 +400,7 @@ function tick() {
         const p = getPlayer(id);
         if (!p || !p.getPlayerState) return;
         const start = startOf(id);
-        const pos = start + (t - o[id]);
+        const pos = start + (t - o[id]) * rateOf(id);
         const dur = videoState[id].duration;
         if (pos < start) {
             // lane has not begun yet
@@ -363,6 +412,7 @@ function tick() {
             return;
         }
         if (!mix.started[id]) {
+            if (p.setPlaybackRate) p.setPlaybackRate(rateOf(id));
             p.seekTo(pos, true);
             p.playVideo();
             mix.started[id] = true;
@@ -395,6 +445,7 @@ function resetPlayers() {
     });
     ['startA', 'startB', 'offsetB', 'beatA', 'beatB'].forEach((id) => { $(id).value = 0; });
     ['bpmA', 'bpmB'].forEach((id) => { $(id).value = ''; });
+    IDS.forEach((id) => { $('rate' + id).value = 1; applyRate(id); });
     ['A', 'B'].forEach((id) => {
         $('volume' + id).value = 100;
         $('volumeValue' + id).textContent = '100%';
@@ -403,6 +454,7 @@ function resetPlayers() {
     curve = defaultCurve();
     markers.A = []; markers.B = [];
     selectedMarker = null;
+    syncFrom = null;
     mix.t = 0;
     applyVolumes(true);
     renderTimeline();
@@ -499,14 +551,15 @@ function drawLane(svg, id, y, origin) {
 
     // beat grid: video times fb + k*p within [start, start + length]
     const bpm = bpmOf(id);
-    if (bpm > 0 && (60 / bpm) * view.pps >= 4) {
+    const rate = rateOf(id);
+    if (bpm > 0 && (60 / bpm / rate) * view.pps >= 4) {
         const p = 60 / bpm;
         const start = startOf(id);
         const fb = beatOf(id);
         const kMin = Math.ceil((start - fb) / p);
-        const kMax = Math.floor((start + laneLength(id) - fb) / p);
+        const kMax = Math.floor((start + laneLength(id) * rate - fb) / p);
         for (let k = kMin; k <= kMax; k++) {
-            const x = x0 + (fb + k * p - start) * view.pps;
+            const x = x0 + ((fb + k * p - start) / rate) * view.pps;
             if (x < 0 || x > view.W) continue;
             const isBar = ((k % 4) + 4) % 4 === 0;
             el('line', {
@@ -517,11 +570,12 @@ function drawLane(svg, id, y, origin) {
     }
     // markers: a flag at (origin + marker - start), only inside the visible part of the clip
     markers[id].forEach((m, i) => {
-        if (m < startOf(id) || m > startOf(id) + laneLength(id)) return;
-        const x = x0 + (m - startOf(id)) * view.pps;
+        if (m < startOf(id) || m > startOf(id) + laneLength(id) * rate) return;
+        const x = x0 + ((m - startOf(id)) / rate) * view.pps;
         if (x < 0 || x > view.W) return;
-        el('line', { x1: x, x2: x, y1: y, y2: y + LAYOUT.laneH, class: 'tl-marker' }, svg);
-        el('polygon', { points: `${x},${y} ${x + 9},${y + 4} ${x},${y + 8}`, class: 'tl-marker-flag' }, svg);
+        const isTarget = syncFrom && syncFrom.id !== id;
+        el('line', { x1: x, x2: x, y1: y, y2: y + LAYOUT.laneH, class: 'tl-marker' + (isTarget ? ' target' : '') }, svg);
+        el('polygon', { points: `${x},${y} ${x + 9},${y + 4} ${x},${y + 8}`, class: 'tl-marker-flag' + (isTarget ? ' target' : '') }, svg);
         const hit = el('rect', {
             x: x - 5, y: y, width: 14, height: LAYOUT.laneH, class: 'tl-marker-hit',
             'data-kind': 'marker', 'data-id': id, 'data-index': i
@@ -532,20 +586,29 @@ function drawLane(svg, id, y, origin) {
     });
     if (selectedMarker && selectedMarker.id === id && markers[id][selectedMarker.index] !== undefined) {
         const m = markers[id][selectedMarker.index];
-        const x = x0 + (m - startOf(id)) * view.pps;
+        const x = x0 + ((m - startOf(id)) / rate) * view.pps;
         if (m >= startOf(id) && x >= 0 && x <= view.W) {
-            const px = Math.min(x + 12, view.W - 74);
-            el('rect', {
-                x: px, y: y + 9, width: 66, height: 17, rx: 8, class: 'tl-start-btn',
-                'data-kind': 'markstart', 'data-id': id, 'data-index': selectedMarker.index
-            }, svg);
-            const t = el('text', { x: px + 33, y: y + 21, 'text-anchor': 'middle', class: 'tl-start-text' }, svg);
-            t.textContent = 'Start here';
+            const other = id === 'A' ? 'B' : 'A';
+            const canSync = markers[other].length > 0;
+            const px = Math.min(x + 12, view.W - (canSync ? 156 : 74));
+            const pill = (kind, label, left, width) => {
+                el('rect', {
+                    x: left, y: y + 9, width, height: 17, rx: 8, class: 'tl-start-btn',
+                    'data-kind': kind, 'data-id': id, 'data-index': selectedMarker.index
+                }, svg);
+                const t = el('text', { x: left + width / 2, y: y + 21, 'text-anchor': 'middle', class: 'tl-start-text' }, svg);
+                t.textContent = label;
+            };
+            pill('markstart', 'Start here', px, 66);
+            if (canSync) pill('marksync', syncFrom ? 'Pick target\u2026' : 'Sync to\u2026', px + 72, 78);
         }
     }
     const label = el('text', { x: Math.max(x0, LAYOUT.pad) + 6, y: y + 21 }, svg);
     const st = startOf(id);
-    label.textContent = st > 0 ? `Video ${id} (starts at ${fmtTime(st)})` : `Video ${id}`;
+    const notes = [];
+    if (st > 0) notes.push(`starts at ${fmtTime(st)}`);
+    if (Math.abs(rate - 1) > 0.0005) notes.push(`\u00d7${Math.round(rate * 1000) / 1000}`);
+    label.textContent = notes.length ? `Video ${id} (${notes.join(', ')})` : `Video ${id}`;
 }
 
 function updatePlayhead() {
@@ -562,6 +625,7 @@ function updatePlayhead() {
 let drag = null;
 let lastPointTap = { index: -1, time: 0 };
 let lastMarkerTap = { key: '', time: 0 };
+let syncFrom = null;       // marker waiting to be synced to a marker on the other lane
 let selectedMarker = null; // { id, index } - shows a "Start here" button next to it
 
 function svgX(e) {
@@ -584,8 +648,9 @@ function onTimelineDown(e) {
     if (!kind) return;
     const svg = $('timeline');
     svg.setPointerCapture(e.pointerId);
-    if (selectedMarker && kind !== 'marker' && kind !== 'markstart') {
+    if ((selectedMarker || syncFrom) && kind !== 'marker' && kind !== 'markstart' && kind !== 'marksync') {
         selectedMarker = null;
+        syncFrom = null;
         renderTimeline();
     }
 
@@ -601,6 +666,19 @@ function onTimelineDown(e) {
     } else if (kind === 'marker') {
         const id = e.target.dataset.id;
         const i = parseInt(e.target.dataset.index, 10);
+        if (syncFrom && syncFrom.id !== id) {
+            // sync: shift the lanes so the selected marker lines up with this one
+            const mine = { [syncFrom.id]: markers[syncFrom.id][syncFrom.index], [id]: markers[id][i] };
+            const off = (mine.A - startOf('A')) / rateOf('A') - (mine.B - startOf('B')) / rateOf('B');
+            $('offsetB').value = Math.round(off * 1000) / 1000;
+            updateStatus(`Synced: A ${fmtTime(mine.A)} now lines up with B ${fmtTime(mine.B)}`);
+            selectedMarker = null;
+            syncFrom = null;
+            lastMarkerTap = { key: '', time: 0 };
+            renderTimeline();
+            return;
+        }
+        syncFrom = null;
         const key = `${id}${i}`;
         const now = performance.now();
         if (lastMarkerTap.key === key && now - lastMarkerTap.time < 350) {
@@ -612,9 +690,13 @@ function onTimelineDown(e) {
         }
         lastMarkerTap = { key, time: now };
         selectedMarker = { id, index: i };
-        const t = origins()[id] + markers[id][i] - startOf(id);
+        const t = origins()[id] + (markers[id][i] - startOf(id)) / rateOf(id);
         renderTimeline();
         if (mix.playing) startMix(t); else { mix.t = t; updatePlayhead(); applyVolumes(); }
+    } else if (kind === 'marksync') {
+        syncFrom = { id: e.target.dataset.id, index: parseInt(e.target.dataset.index, 10) };
+        renderTimeline();
+        updateStatus(`Click a marker on video ${syncFrom.id === 'A' ? 'B' : 'A'} to line it up with this one`);
     } else if (kind === 'markstart') {
         // make this marker the clip's start point; the lane keeps its place on the mix,
         // so the marker now plays at the lane's left edge
@@ -624,6 +706,7 @@ function onTimelineDown(e) {
         if (dur > 0) start = Math.min(start, dur - 1);
         $('start' + id).value = start;
         selectedMarker = null;
+        syncFrom = null;
         renderTimeline();
         updateStatus(`Video ${id} now starts at ${fmtTime(start)}`);
     } else if (kind === 'ruler') {
@@ -662,13 +745,14 @@ function onTimelineMove(e) {
         // Moving left past 0:00 trims the front of the clip (the start point moves into
         // the clip); moving back right first un-trims, then slides the lane.
         let origin, start;
+        const rate = rateOf(drag.id);
         if (dt >= 0) {
-            if (dt <= drag.s0) { start = drag.s0 - dt; origin = drag.o0; }
-            else { start = 0; origin = drag.o0 + (dt - drag.s0); }
+            if (dt * rate <= drag.s0) { start = drag.s0 - dt * rate; origin = drag.o0; }
+            else { start = 0; origin = drag.o0 + (dt - drag.s0 / rate); }
         } else if (drag.o0 + dt >= 0) {
             start = drag.s0; origin = drag.o0 + dt;
         } else {
-            start = drag.s0 - (drag.o0 + dt); origin = 0;
+            start = drag.s0 - (drag.o0 + dt) * rate; origin = 0;
         }
         const dur = videoState[drag.id].duration;
         if (dur > 0) start = Math.min(start, dur - 1);
@@ -687,7 +771,7 @@ function onTimelineMove(e) {
             let best = null;
             markers.A.forEach((ma) => markers.B.forEach((mb) => {
                 if (ma < sA || mb < sB) return;
-                const cand = (ma - sA) - (mb - sB);
+                const cand = (ma - sA) / rateOf('A') - (mb - sB) / rateOf('B');
                 if (Math.abs(cand - raw) < 10 / view.pps && (best === null || Math.abs(cand - raw) < Math.abs(best - raw))) best = cand;
             }));
             if (best !== null) off = clamp(best, minOff, maxOff);
@@ -718,7 +802,7 @@ function onTimelineUp() {
 
 // ---------- saved settings (localStorage + shareable link) ----------
 const STORAGE_KEY = 'ytdj-basic-v1';
-const SETTING_FIELDS = ['startA', 'startB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB'];
+const SETTING_FIELDS = ['startA', 'startB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB', 'rateA', 'rateB'];
 let saveTimer = null;
 const pendingLoad = {}; // video ids restored from settings, loaded once the YT API is ready
 
@@ -736,14 +820,15 @@ function collectSettings() {
 
 // Compact hash format, e.g.  #a=ViMftVmc3Ts&b=yt1polx2D_4&o=3.5&bb=128&c=0:0,20:0,30:1
 // Anything left at its default is omitted. (Old #s=<json> links are still read.)
-const HASH_FIELDS = { startA: 'sa', startB: 'sb', offsetB: 'o', bpmA: 'ba', bpmB: 'bb', beatA: 'fa', beatB: 'fb' };
+const HASH_FIELDS = { startA: 'sa', startB: 'sb', offsetB: 'o', bpmA: 'ba', bpmB: 'bb', beatA: 'fa', beatB: 'fb', rateA: 'ra', rateB: 'rb' };
 
 function encodeHash(s) {
     const parts = [];
     IDS.forEach((id) => { if (s.ids[id]) parts.push(`${id.toLowerCase()}=${s.ids[id]}`); });
     for (const field in HASH_FIELDS) {
         const v = parseFloat(s.f[field]);
-        if (!isNaN(v) && v !== 0) parts.push(`${HASH_FIELDS[field]}=${v}`);
+        const def = field.startsWith('rate') ? 1 : 0; // speed defaults to 1, everything else to 0
+        if (!isNaN(v) && v !== def) parts.push(`${HASH_FIELDS[field]}=${v}`);
     }
     IDS.forEach((id) => { if (s.vol[id] !== 100) parts.push(`v${id.toLowerCase()}=${s.vol[id]}`); });
     IDS.forEach((id) => { if (s.markers[id].length) parts.push(`m${id.toLowerCase()}=${s.markers[id].join(',')}`); });
@@ -765,7 +850,7 @@ function decodeHash(str) {
         const raw = kv[`m${id.toLowerCase()}`];
         if (raw) s.markers[id] = raw.split(',').map(parseFloat).filter(isFinite);
     });
-    for (const field in HASH_FIELDS) s.f[field] = kv[HASH_FIELDS[field]] || (field.startsWith('bpm') ? '' : '0');
+    for (const field in HASH_FIELDS) s.f[field] = kv[HASH_FIELDS[field]] || (field.startsWith('bpm') ? '' : field.startsWith('rate') ? '1' : '0');
     s.vol.A = kv.va !== undefined ? kv.va : 100;
     s.vol.B = kv.vb !== undefined ? kv.vb : 100;
     if (kv.c) {
@@ -874,9 +959,10 @@ window.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    ['startA', 'startB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB'].forEach((id) => {
+    ['startA', 'startB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB', 'rateA', 'rateB'].forEach((id) => {
         $(id).addEventListener('input', renderTimeline);
     });
+    IDS.forEach((id) => $('rate' + id).addEventListener('change', () => applyRate(id)));
     $('mixMode').addEventListener('change', () => { applyVolumes(true); scheduleSave(); });
     $('monitor').addEventListener('change', () => { syncSoloButtons(); applyVolumes(true); });
 
@@ -909,6 +995,7 @@ window.resetPlayers = resetPlayers;
 window.tapTempo = tapTempo;
 window.setFirstBeat = setFirstBeat;
 window.toggleSolo = toggleSolo;
+window.matchTempo = matchTempo;
 window.addMarker = addMarker;
 window.clearMarkers = clearMarkers;
 window.copyShareLink = copyShareLink;

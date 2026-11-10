@@ -75,6 +75,13 @@
                         <span id="volumeValueA">100%</span>
                     </div>
                     <div class="control-group">
+                        <label for="rateA">Speed (&times;, 1 = normal):</label>
+                        <div class="inline-row">
+                            <input type="number" id="rateA" value="1" min="0.25" max="2" step="0.01">
+                            <button onclick="matchTempo('A')" title="Set this video's speed so its BPM matches video B">Match to B</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
                         <label>Markers (e.g. where the vocals start):</label>
                         <div class="inline-row">
                             <button onclick="addMarker('A')" title="Drop a marker at this video's current time">&#9873; Mark here</button>
@@ -125,6 +132,13 @@
                         <span id="volumeValueB">100%</span>
                     </div>
                     <div class="control-group">
+                        <label for="rateB">Speed (&times;, 1 = normal):</label>
+                        <div class="inline-row">
+                            <input type="number" id="rateB" value="1" min="0.25" max="2" step="0.01">
+                            <button onclick="matchTempo('B')" title="Set this video's speed so its BPM matches video A">Match to A</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
                         <label>Markers (e.g. where the vocals start):</label>
                         <div class="inline-row">
                             <button onclick="addMarker('B')" title="Drop a marker at this video's current time">&#9873; Mark here</button>
@@ -168,7 +182,8 @@
                     Lanes then snap so beats line up.</li>
                 <li><strong>Crossfade:</strong> click the curve to add a point, drag to move it, double-click (or right-click) to remove.
                     Top = only B, bottom = only A. Add several points for A&rarr;B&rarr;A mixes.</li>
-                <li><strong>Markers:</strong> pause a video where something important happens (vocals, drop) and press &ldquo;Mark here&rdquo;. A flag appears on its lane; click it to jump the playhead there and press &ldquo;Start here&rdquo; to make it the clip&rsquo;s start point, or double-click to delete it. Dragging a lane snaps a marker on A to a marker on B.</li>
+                <li><strong>Markers:</strong> pause a video where something important happens (vocals, drop) and press &ldquo;Mark here&rdquo;. A flag appears on its lane; click it to jump the playhead there and press &ldquo;Start here&rdquo; to make it the clip&rsquo;s start point, or &ldquo;Sync to&hellip;&rdquo; and then click a marker on the other clip to line the two up. Double-click deletes a marker. Dragging a lane also snaps a marker on A to a marker on B.</li>
+                <li><strong>Speed:</strong> change a video&rsquo;s speed, or set both BPMs and press &ldquo;Match to A / B&rdquo; to make the tempos equal. YouTube only allows certain speeds, so the match can be slightly off, and speeding up also raises the pitch.</li>
                 <li><strong>Play:</strong> click the ruler to move the playhead, then Play, or use Play from start.</li>
                 <li><strong>Save &amp; share:</strong> settings are saved automatically and live in the page URL &mdash; copy it to share your mix.</li>
             </ul>
