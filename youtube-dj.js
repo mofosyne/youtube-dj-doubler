@@ -589,13 +589,58 @@ function collectSettings() {
     return s;
 }
 
+// Compact hash format, e.g.  #a=ViMftVmc3Ts&b=yt1polx2D_4&o=3.5&bb=128&c=0:0,20:0,30:1
+// Anything left at its default is omitted. (Old #s=<json> links are still read.)
+const HASH_FIELDS = { startA: 'sa', startB: 'sb', offsetB: 'o', bpmA: 'ba', bpmB: 'bb', beatA: 'fa', beatB: 'fb' };
+
+function encodeHash(s) {
+    const parts = [];
+    IDS.forEach((id) => { if (s.ids[id]) parts.push(`${id.toLowerCase()}=${s.ids[id]}`); });
+    for (const field in HASH_FIELDS) {
+        const v = parseFloat(s.f[field]);
+        if (!isNaN(v) && v !== 0) parts.push(`${HASH_FIELDS[field]}=${v}`);
+    }
+    IDS.forEach((id) => { if (s.vol[id] !== 100) parts.push(`v${id.toLowerCase()}=${s.vol[id]}`); });
+    if (s.mode === 'linear') parts.push('m=linear');
+    if (JSON.stringify(s.curve) !== JSON.stringify(defaultCurve())) {
+        parts.push('c=' + s.curve.map((p) => `${p.t}:${p.x}`).join(','));
+    }
+    return parts.join('&');
+}
+
+function decodeHash(str) {
+    const kv = {};
+    str.split('&').forEach((pair) => {
+        const i = pair.indexOf('=');
+        if (i > 0) kv[pair.slice(0, i)] = decodeURIComponent(pair.slice(i + 1));
+    });
+    const s = { f: {}, vol: {}, ids: { A: kv.a || '', B: kv.b || '' }, mode: kv.m || 'equal' };
+    for (const field in HASH_FIELDS) s.f[field] = kv[HASH_FIELDS[field]] || (field.startsWith('bpm') ? '' : '0');
+    s.vol.A = kv.va !== undefined ? kv.va : 100;
+    s.vol.B = kv.vb !== undefined ? kv.vb : 100;
+    if (kv.c) {
+        s.curve = kv.c.split(',').map((pt) => {
+            const [t, x] = pt.split(':');
+            return { t: parseFloat(t), x: parseFloat(x) };
+        });
+    } else {
+        s.curve = defaultCurve();
+    }
+    return s;
+}
+
+function hashLink(s) {
+    const h = encodeHash(s);
+    return h ? `#${h}` : '';
+}
+
 function scheduleSave() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
         const json = JSON.stringify(collectSettings());
         try { localStorage.setItem(STORAGE_KEY, json); } catch (e) { /* storage unavailable */ }
         // Keep the address bar in sync so the page URL is always a share link
-        try { history.replaceState(null, '', `#s=${encodeURIComponent(json)}`); } catch (e) { /* e.g. file:// */ }
+        try { history.replaceState(null, '', location.pathname + location.search + hashLink(collectSettings())); } catch (e) { /* e.g. file:// */ }
     }, 300);
 }
 
@@ -627,8 +672,9 @@ function applySettings(s) {
 
 function loadSavedSettings() {
     try {
-        const m = location.hash.match(/^#s=(.+)$/);
-        if (m) { applySettings(JSON.parse(decodeURIComponent(m[1]))); return; }
+        const legacy = location.hash.match(/^#s=(.+)$/);
+        if (legacy) { applySettings(JSON.parse(decodeURIComponent(legacy[1]))); return; }
+        if (location.hash.length > 1) { applySettings(decodeHash(location.hash.slice(1))); return; }
     } catch (e) { /* bad link: fall back to local storage */ }
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -649,7 +695,7 @@ function loadPendingVideos() {
 
 function copyShareLink() {
     clearTimeout(saveTimer);
-    const link = `${location.origin}${location.pathname}#s=${encodeURIComponent(JSON.stringify(collectSettings()))}`;
+    const link = `${location.origin}${location.pathname}${hashLink(collectSettings())}`;
     const done = () => updateStatus('Share link copied to clipboard');
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(link).then(done, () => window.prompt('Copy this link:', link));

@@ -10,7 +10,7 @@ A web-based application that lets you mix YouTube videos like a DJ, with both ba
 - **BPM & Beat Grid**: Enter or tap a BPM and a first-beat position per video to see a beat grid; dragging then snaps beats of A and B together
 - **Crossfade Curve**: One editable curve (top = only B, bottom = only A). Click to add points, drag to move, double-click to remove. Supports multiple transitions (A→B→A…). Equal-power or linear fade law
 - **Start Time / Volume**: Per-video start point and master volume
-- **Saved settings**: Everything (YouTube IDs, start/offset, BPM, volumes, fade law, curve) is saved automatically in your browser and written live into the page URL (`#s=…`), so the address bar is always a shareable link. "Copy share link" is a shortcut for that
+- **Saved settings**: Everything (YouTube IDs, start/offset, BPM, volumes, fade law, curve) is saved automatically in your browser and written live into the page URL as a short readable hash such as `#a=ViMftVmc3Ts&b=yt1polx2D_4&o=3.5&bb=128` (defaults are omitted), so the address bar is always a shareable link. "Copy share link" is a shortcut for that
 - **Playback**: Play from the playhead (click the ruler to move it) or from the start
 
 ### Sample Mode
