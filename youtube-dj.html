@@ -10,6 +10,7 @@
     <div class="container">
         <h1>YouTube DJ Doubler</h1>
 
+        <input type="hidden" id="shift" value="0">
         <div class="players-row">
             <div class="player-col">
                 <h2>Video A</h2>
@@ -45,6 +46,12 @@
                 <button class="small-btn" onclick="copyShareLink()">Copy share link</button>
             </div>
             <svg id="timeline" aria-label="Mix timeline"></svg>
+            <div class="timeline-nav">
+                <button class="nav-btn" onclick="zoomBy(1 / 1.5)" title="Zoom out (Ctrl + scroll)">&minus;</button>
+                <button class="nav-btn" onclick="zoomBy(1.5)" title="Zoom in (Ctrl + scroll)">+</button>
+                <button class="nav-btn" onclick="fitTimeline()" title="Show both whole clips">Fit</button>
+                <svg id="minimap" aria-label="Timeline overview: drag to move"></svg>
+            </div>
             <div class="crossfade-visual">
                 <div class="fade-bar">
                     <div id="fadeA" class="fade-indicator"></div>
@@ -66,8 +73,11 @@
                 <h2>Video A</h2>
                 <div class="controls">
                     <div class="control-group">
-                        <label for="startA">Start Time (s):</label>
-                        <input type="number" id="startA" value="0" min="0">
+                        <label for="startA">Start / end (s, end 0 = full):</label>
+                        <div class="inline-row">
+                            <input type="number" id="startA" value="0" min="0" step="0.01" title="Start (s)">
+                            <input type="number" id="endA" value="0" min="0" step="0.01" title="End (s), 0 = play to the end">
+                        </div>
                     </div>
                     <div class="control-group">
                         <label for="volumeA">Volume:</label>
@@ -119,8 +129,11 @@
                 <h2>Video B</h2>
                 <div class="controls">
                     <div class="control-group">
-                        <label for="startB">Start Time (s):</label>
-                        <input type="number" id="startB" value="0" min="0">
+                        <label for="startB">Start / end (s, end 0 = full):</label>
+                        <div class="inline-row">
+                            <input type="number" id="startB" value="0" min="0" step="0.01" title="Start (s)">
+                            <input type="number" id="endB" value="0" min="0" step="0.01" title="End (s), 0 = play to the end">
+                        </div>
                     </div>
                     <div class="control-group">
                         <label for="offsetB">Offset from A (s, negative = B starts first):</label>
@@ -178,6 +191,8 @@
             <ul>
                 <li><strong>Example:</strong> <a href="youtube-dj.html#a=ViMftVmc3Ts&b=yt1polx2D_4&sb=0.51&o=-16.9&ba=101.8&bb=99.8&fa=42.61&fb=60&vb=80&ma=4.25,42.63&mb=21.69,60.17&c=0:0,57.742:0,57.792:0.29,59.51:0.747,59.56:1,138.488:1">load an example mix</a> to see markers, beat grids and a crossfade curve already set up.</li>
                 <li><strong>Load videos:</strong> paste a YouTube URL for A and B and press Load.</li>
+                <li><strong>Start / end flags:</strong> every lane has a flag at each end. Drag the left one to choose where the clip starts and the right one to choose where it stops; the music stays lined up and the flags snap to that clip&rsquo;s own beats and markers (Shift = free).</li>
+                <li><strong>Zoom &amp; move:</strong> the timeline starts zoomed to show both whole clips. Use &minus; / + (or Ctrl + scroll) to zoom, Shift + scroll or the strip under the timeline to move, and Fit to see everything again.</li>
                 <li><strong>Align:</strong> drag the A / B lanes on the timeline to shift them (Shift = fine). Negative offsets mean B starts first.</li>
                 <li><strong>Beat match (optional):</strong> open &ldquo;Beat grid&rdquo;, enter or tap each BPM and set Beat 1 position.
                     Lanes then snap so beats line up.</li>

@@ -7,6 +7,8 @@ A web-based application that lets you mix YouTube videos like a DJ, with both ba
 ### Basic Mode
 - **Dual Video Players**: Load two YouTube videos simultaneously
 - **Mix Timeline**: Two lanes on one shared clock. Drag lane A or B to shift them (negative offsets allowed). Dragging a lane left past 0:00 cuts off its beginning, which sets that clip's start point; dragging back right undoes the cut. Shift = fine, otherwise snaps to 0.1s
+- **Start / end flags**: each lane has a flag at both ends; drag to cut the clip there. The music stays lined up with the other clip and the flags snap to that clip's beats and markers (Shift = free). Saved as `sa`/`sb` (start) and `ea`/`eb` (end)
+- **Zoom & move**: the timeline opens showing both whole clips. `−` / `+` buttons or Ctrl + scroll zoom, Shift + scroll or the overview strip under the timeline move, and Fit shows everything
 - **BPM & Beat Grid**: Enter or tap a BPM and a first-beat position per video to see a beat grid; dragging then snaps beats of A and B together
 - **Crossfade Curve**: One editable curve (top = only B, bottom = only A). Click to add points, drag to move, double-click to remove. Supports multiple transitions (A→B→A…). Equal-power or linear fade law
 - **Start Time / Volume**: Per-video start point and master volume

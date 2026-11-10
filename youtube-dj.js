@@ -46,6 +46,7 @@ const num = (id, def = 0) => {
 };
 const getPlayer = (id) => (id === 'A' ? playerA : playerB);
 const startOf = (id) => num('start' + id);
+const endOf = (id) => Math.max(0, num('end' + id)); // 0 = play to the end of the video
 const bpmOf = (id) => num('bpm' + id);
 const beatOf = (id) => num('beat' + id);
 const getOffset = () => num('offsetB');
@@ -58,14 +59,30 @@ function rateOf(id) {
     return isFinite(r) && r > 0 ? clamp(r, 0.25, 2) : 1;
 }
 
+// Mix time at which each lane's start point plays. `shift` (hidden, saved) is the mix time of the
+// earlier lane, so editing a lane never slides the crossfade curve away from the music.
 function origins() {
     const o = getOffset();
-    return { A: Math.max(0, -o), B: Math.max(0, o) };
+    const shift = Math.max(0, num('shift'));
+    return { A: shift + Math.max(0, -o), B: shift + Math.max(0, o) };
+}
+
+// Set both lanes' absolute origins (mix seconds) by updating offset + shift.
+function applyOrigins(oA, oB) {
+    $('offsetB').value = Math.round((oB - oA) * 1000) / 1000;
+    $('shift').value = Math.round(Math.max(0, Math.min(oA, oB)) * 1000) / 1000;
+}
+
+// Video second at which the clip stops (its end flag, or the end of the video).
+function endVideo(id) {
+    const d = videoState[id].duration;
+    const e = endOf(id);
+    if (e > 0) return d > 0 ? Math.min(e, d) : e;
+    return d > 0 ? d : startOf(id) + DEFAULT_LANE_SECONDS;
 }
 
 function laneLength(id) {
-    const d = videoState[id].duration;
-    return Math.max(1, (d > 0 ? d - startOf(id) : DEFAULT_LANE_SECONDS) / rateOf(id));
+    return Math.max(1, (endVideo(id) - startOf(id)) / rateOf(id));
 }
 
 function fmtTime(t) {
@@ -432,13 +449,13 @@ function tick() {
         if (!p || !p.getPlayerState) return;
         const start = startOf(id);
         const pos = start + (t - o[id]) * rateOf(id);
-        const dur = videoState[id].duration;
+        const stopAt = endOf(id) > 0 ? endOf(id) : videoState[id].duration; // end flag or end of video
         if (pos < start) {
             // lane has not begun yet
             if (mix.started[id]) { p.pauseVideo(); mix.started[id] = false; }
             return;
         }
-        if (dur && pos >= dur) {
+        if (stopAt && pos >= stopAt) {
             if (p.getPlayerState() === 1) p.pauseVideo();
             return;
         }
@@ -453,6 +470,11 @@ function tick() {
         }
     });
     applyVolumes();
+    // when zoomed in, scroll along with the playhead
+    if (!view.fit && (t > view.t0 + view.span || t < view.t0)) {
+        view.t0 = clamp(t - view.span * 0.1, 0, Math.max(0, view.extent - view.span));
+        renderTimeline();
+    }
     updatePlayhead();
     const end = Math.max(o.A + laneLength('A'), o.B + laneLength('B'));
     if (t > end) {
@@ -474,7 +496,7 @@ function resetPlayers() {
         const p = getPlayer(id);
         if (p && p.seekTo) p.seekTo(startOf(id), true);
     });
-    ['startA', 'startB', 'offsetB', 'beatA', 'beatB'].forEach((id) => { $(id).value = 0; });
+    ['startA', 'startB', 'endA', 'endB', 'offsetB', 'shift', 'beatA', 'beatB'].forEach((id) => { $(id).value = 0; });
     ['bpmA', 'bpmB'].forEach((id) => { $(id).value = ''; });
     IDS.forEach((id) => { $('rate' + id).value = 1; applyRate(id); });
     ['A', 'B'].forEach((id) => {
@@ -495,7 +517,8 @@ function resetPlayers() {
 // ---------- timeline rendering ----------
 const SVGNS = 'http://www.w3.org/2000/svg';
 const LAYOUT = { pad: 12, rulerH: 22, laneH: 34, aY: 26, bY: 64, curveY: 106, curveH: 96, H: 210 };
-const view = { extent: 60, pps: 10, W: 600, playhead: null };
+// extent = whole mix in seconds; the visible window is [t0, t0 + span]. fit = show everything.
+const view = { extent: 60, pps: 10, W: 600, playhead: null, fit: true, t0: 0, span: 60 };
 
 function el(name, attrs, parent) {
     const e = document.createElementNS(SVGNS, name);
@@ -505,16 +528,17 @@ function el(name, attrs, parent) {
 }
 
 function timelineExtent() {
-    // keep the scale fixed while a lane is being dragged (otherwise it rescales under the pointer)
-    if (drag && drag.kind === 'lane') return drag.extent;
+    // keep the scale fixed while a lane or flag is being dragged (otherwise it rescales under the pointer)
+    if (drag && drag.extent) return drag.extent;
     const o = origins();
     const lastPt = curve[curve.length - 1].t;
-    const need = Math.max(60, Math.abs(getOffset()) + 45, lastPt + 15, mix.t + 20);
+    // both whole clips (as trimmed), the curve, and the playhead
+    const need = Math.max(60, o.A + laneLength('A'), o.B + laneLength('B'), lastPt + 15, mix.t + 20);
     return Math.ceil(need / 30) * 30;
 }
 
-const xOf = (t) => LAYOUT.pad + t * view.pps;
-const tOf = (x) => (x - LAYOUT.pad) / view.pps;
+const xOf = (t) => LAYOUT.pad + (t - view.t0) * view.pps;
+const tOf = (x) => view.t0 + (x - LAYOUT.pad) / view.pps;
 const curveYOf = (v) => LAYOUT.curveY + 8 + (1 - v) * (LAYOUT.curveH - 16);
 const curveVOf = (y) => clamp(1 - (y - LAYOUT.curveY - 8) / (LAYOUT.curveH - 16), 0, 1);
 
@@ -524,7 +548,14 @@ function renderTimeline() {
     const W = Math.max(300, svg.clientWidth || 600);
     view.W = W;
     view.extent = timelineExtent();
-    view.pps = (W - 2 * LAYOUT.pad) / view.extent;
+    if (view.fit) {
+        view.t0 = 0;
+        view.span = view.extent;
+    } else {
+        view.span = clamp(view.span, 2, view.extent);
+        view.t0 = clamp(view.t0, 0, Math.max(0, view.extent - view.span));
+    }
+    view.pps = (W - 2 * LAYOUT.pad) / view.span;
     svg.setAttribute('width', W);
     svg.setAttribute('height', LAYOUT.H);
     while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -533,7 +564,7 @@ function renderTimeline() {
     el('rect', { x: 0, y: 0, width: W, height: LAYOUT.rulerH, class: 'tl-ruler', 'data-kind': 'ruler' }, svg);
     const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
     const step = steps.find((s) => s * view.pps >= 60) || 600;
-    for (let t = 0; t <= view.extent; t += step) {
+    for (let t = Math.ceil(view.t0 / step) * step; t <= view.t0 + view.span; t += step) {
         el('line', { x1: xOf(t), x2: xOf(t), y1: 14, y2: LAYOUT.curveY + LAYOUT.curveH, class: 'tl-tick' }, svg);
         const label = el('text', { x: xOf(t) + 3, y: 11 }, svg);
         label.textContent = fmtTime(t).replace('.0', '');
@@ -557,7 +588,7 @@ function renderTimeline() {
     const pts = [];
     pts.push(`${LAYOUT.pad},${curveYOf(curve[0].x)}`);
     curve.forEach((p) => pts.push(`${xOf(p.t)},${curveYOf(p.x)}`));
-    pts.push(`${xOf(view.extent)},${curveYOf(curve[curve.length - 1].x)}`);
+    pts.push(`${W - LAYOUT.pad},${curveYOf(curve[curve.length - 1].x)}`);
     el('polyline', { points: pts.join(' '), class: 'tl-curve' }, svg);
     curve.forEach((p, i) => {
         el('circle', {
@@ -569,6 +600,7 @@ function renderTimeline() {
     // playhead
     view.playhead = el('line', { y1: 0, y2: LAYOUT.H, class: 'tl-playhead' }, svg);
     updatePlayhead();
+    renderMinimap();
     scheduleSave();
 }
 
@@ -615,6 +647,20 @@ function drawLane(svg, id, y, origin) {
         tip.textContent = `${fmtTime(m)} - click to jump, double-click to delete`;
         hit.appendChild(tip);
     });
+    // start / end flags: drag to cut the clip there
+    const handle = (kind, x, title) => {
+        if (x < -2 || x > view.W + 2) return;
+        el('rect', { x: x - 3, y: y + 2, width: 6, height: LAYOUT.laneH - 4, rx: 2, class: 'tl-handle ' + kind }, svg);
+        const hit = el('rect', {
+            x: x - 8, y: y, width: 16, height: LAYOUT.laneH, class: 'tl-handle-hit',
+            'data-kind': kind, 'data-id': id
+        }, svg);
+        const tip = document.createElementNS(SVGNS, 'title');
+        tip.textContent = title;
+        hit.appendChild(tip);
+    };
+    handle('trimstart', x0, 'Start flag: drag to choose where this clip starts (Shift = no snapping)');
+    handle('trimend', x0 + w, 'End flag: drag to choose where this clip ends (Shift = no snapping)');
     if (selectedMarker && selectedMarker.id === id && markers[id][selectedMarker.index] !== undefined) {
         const m = markers[id][selectedMarker.index];
         const x = x0 + ((m - startOf(id)) / rate) * view.pps;
@@ -638,6 +684,7 @@ function drawLane(svg, id, y, origin) {
     const st = startOf(id);
     const notes = [];
     if (st > 0) notes.push(`starts at ${fmtTime(st)}`);
+    if (endOf(id) > 0 && endOf(id) < (videoState[id].duration || Infinity)) notes.push(`ends at ${fmtTime(endOf(id))}`);
     if (Math.abs(rate - 1) > 0.0005) notes.push(`\u00d7${Math.round(rate * 1000) / 1000}`);
     label.textContent = notes.length ? `Video ${id} (${notes.join(', ')})` : `Video ${id}`;
 }
@@ -650,6 +697,57 @@ function updatePlayhead() {
     }
     const td = $('timeDisplay');
     if (td) td.textContent = fmtTime(mix.t);
+    renderMinimap();
+}
+
+// ---------- zoom, pan and the overview strip ----------
+function zoomBy(factor, anchor) {
+    if (anchor === undefined) anchor = mix.t >= view.t0 && mix.t <= view.t0 + view.span ? mix.t : view.t0 + view.span / 2;
+    const span = clamp(view.span / factor, 2, view.extent);
+    const frac = (anchor - view.t0) / view.span;
+    view.fit = span >= view.extent - 0.001;
+    view.span = span;
+    view.t0 = clamp(anchor - frac * span, 0, Math.max(0, view.extent - span));
+    renderTimeline();
+}
+
+function panBy(dt) {
+    if (view.span >= view.extent - 0.001) return;
+    view.fit = false;
+    view.t0 = clamp(view.t0 + dt, 0, Math.max(0, view.extent - view.span));
+    renderTimeline();
+}
+
+function fitTimeline() {
+    view.fit = true;
+    renderTimeline();
+}
+
+const MINI_H = 18;
+let miniDrag = null;
+
+function renderMinimap() {
+    const mini = $('minimap');
+    if (!mini) return;
+    const W = Math.max(100, mini.clientWidth || 600);
+    mini.setAttribute('width', W);
+    mini.setAttribute('height', MINI_H);
+    while (mini.firstChild) mini.removeChild(mini.firstChild);
+    const k = W / view.extent;
+    const o = origins();
+    el('rect', { x: 0, y: 0, width: W, height: MINI_H, rx: 4, class: 'mini-bg' }, mini);
+    el('rect', { x: o.A * k, y: 3, width: laneLength('A') * k, height: 5, class: 'mini-lane A' }, mini);
+    el('rect', { x: o.B * k, y: 10, width: laneLength('B') * k, height: 5, class: 'mini-lane B' }, mini);
+    el('rect', {
+        x: view.t0 * k, y: 0, width: Math.max(6, view.span * k), height: MINI_H, rx: 4,
+        class: 'mini-window', 'data-kind': 'miniwin'
+    }, mini);
+    el('line', { x1: mix.t * k, x2: mix.t * k, y1: 0, y2: MINI_H, class: 'mini-playhead' }, mini);
+}
+
+function miniT(e) {
+    const mini = $('minimap');
+    return (e.clientX - mini.getBoundingClientRect().left) / Math.max(100, mini.clientWidth) * view.extent;
 }
 
 // ---------- timeline interaction ----------
@@ -694,6 +792,13 @@ function onTimelineDown(e) {
             s0: startOf(id),                 // start point (seconds into the clip)
             other: o[id === 'A' ? 'B' : 'A'] // the other lane stays put
         };
+    } else if (kind === 'trimstart' || kind === 'trimend') {
+        const id = e.target.dataset.id;
+        drag = {
+            kind, id, x0: svgX(e), extent: view.extent,
+            s0: startOf(id), e0: endVideo(id),
+            o0: origins()[id], other: origins()[id === 'A' ? 'B' : 'A']
+        };
     } else if (kind === 'marker') {
         const id = e.target.dataset.id;
         const i = parseInt(e.target.dataset.index, 10);
@@ -701,7 +806,8 @@ function onTimelineDown(e) {
             // sync: shift the lanes so the selected marker lines up with this one
             const mine = { [syncFrom.id]: markers[syncFrom.id][syncFrom.index], [id]: markers[id][i] };
             const off = (mine.A - startOf('A')) / rateOf('A') - (mine.B - startOf('B')) / rateOf('B');
-            $('offsetB').value = Math.round(off * 1000) / 1000;
+            const oA = origins().A;
+            applyOrigins(oA, Math.max(0, oA + off));
             updateStatus(`Synced: A ${fmtTime(mine.A)} now lines up with B ${fmtTime(mine.B)}`);
             selectedMarker = null;
             syncFrom = null;
@@ -738,7 +844,8 @@ function onTimelineDown(e) {
         // Keep the clip lined up with the other one: cutting off the front moves the lane's
         // left edge forward by the cut length, so the music still sits where it was.
         const cut = Math.max(0, (start - startOf(id)) / rateOf(id));
-        $('offsetB').value = Math.round((getOffset() + (id === 'B' ? cut : -cut)) * 1000) / 1000;
+        const oo = origins();
+        if (id === 'B') applyOrigins(oo.A, oo.B + cut); else applyOrigins(oo.A + cut, oo.B);
         $('start' + id).value = start;
         selectedMarker = null;
         syncFrom = null;
@@ -811,7 +918,38 @@ function onTimelineMove(e) {
             }));
             if (best !== null) off = clamp(best, minOff, maxOff);
         }
-        $('offsetB').value = Math.round(off * 1000) / 1000;
+        // the lane being dragged moves; the other one keeps its place on the mix
+        if (drag.id === 'B') applyOrigins(drag.other, Math.max(0, drag.other + off));
+        else applyOrigins(Math.max(0, drag.other - off), drag.other);
+        renderTimeline();
+    } else if (drag.kind === 'trimstart' || drag.kind === 'trimend') {
+        const id = drag.id;
+        const rate = rateOf(id);
+        const dt = (svgX(e) - drag.x0) / view.pps;          // mix seconds
+        const dur = videoState[id].duration;
+        // snap (in video seconds) to this clip's own markers and beats, within ~8px
+        const snapTo = (v) => {
+            if (e.shiftKey) return v;
+            const tol = 8 / view.pps * rate;
+            let best = v, bestD = tol;
+            markers[id].forEach((m) => { if (Math.abs(m - v) < bestD) { best = m; bestD = Math.abs(m - v); } });
+            if (bpmOf(id) > 0) {
+                const p = 60 / bpmOf(id);
+                const b = beatOf(id) + Math.round((v - beatOf(id)) / p) * p;
+                if (Math.abs(b - v) < bestD) best = b;
+            }
+            return best;
+        };
+        if (drag.kind === 'trimstart') {
+            const s = Math.round(clamp(snapTo(drag.s0 + dt * rate), 0, drag.e0 - 1) * 1000) / 1000;
+            // the lane's left edge moves by the cut length, so the music stays lined up
+            const cut = (s - drag.s0) / rate;
+            $('start' + id).value = s;
+            if (id === 'B') applyOrigins(drag.other, drag.o0 + cut); else applyOrigins(drag.o0 + cut, drag.other);
+        } else {
+            let en = Math.round(clamp(snapTo(drag.e0 + dt * rate), startOf(id) + 1, dur > 0 ? dur : Infinity) * 1000) / 1000;
+            $('end' + id).value = dur > 0 && en >= dur - 0.01 ? 0 : en; // back at the very end = no end flag
+        }
         renderTimeline();
     } else if (drag.kind === 'ruler') {
         mix.t = Math.max(0, tOf(svgX(e)));
@@ -837,7 +975,7 @@ function onTimelineUp() {
 
 // ---------- saved settings (localStorage + shareable link) ----------
 const STORAGE_KEY = 'ytdj-basic-v1';
-const SETTING_FIELDS = ['startA', 'startB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB', 'rateA', 'rateB'];
+const SETTING_FIELDS = ['startA', 'startB', 'endA', 'endB', 'offsetB', 'shift', 'bpmA', 'bpmB', 'beatA', 'beatB', 'rateA', 'rateB'];
 let saveTimer = null;
 const pendingLoad = {}; // video ids restored from settings, loaded once the YT API is ready
 
@@ -855,7 +993,7 @@ function collectSettings() {
 
 // Compact hash format, e.g.  #a=ViMftVmc3Ts&b=yt1polx2D_4&o=3.5&bb=128&c=0:0,20:0,30:1
 // Anything left at its default is omitted. (Old #s=<json> links are still read.)
-const HASH_FIELDS = { startA: 'sa', startB: 'sb', offsetB: 'o', bpmA: 'ba', bpmB: 'bb', beatA: 'fa', beatB: 'fb', rateA: 'ra', rateB: 'rb' };
+const HASH_FIELDS = { startA: 'sa', startB: 'sb', endA: 'ea', endB: 'eb', offsetB: 'o', shift: 'sh', bpmA: 'ba', bpmB: 'bb', beatA: 'fa', beatB: 'fb', rateA: 'ra', rateB: 'rb' };
 
 function encodeHash(s) {
     const parts = [];
@@ -994,7 +1132,7 @@ window.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    ['startA', 'startB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB', 'rateA', 'rateB'].forEach((id) => {
+    ['startA', 'startB', 'endA', 'endB', 'offsetB', 'bpmA', 'bpmB', 'beatA', 'beatB', 'rateA', 'rateB'].forEach((id) => {
         $(id).addEventListener('input', renderTimeline);
     });
     IDS.forEach((id) => $('rate' + id).addEventListener('change', () => applyRate(id)));
@@ -1013,6 +1151,36 @@ window.addEventListener('DOMContentLoaded', function() {
         }
     });
     window.addEventListener('resize', renderTimeline);
+
+    // zoom: Ctrl/Cmd + scroll (or pinch); pan: Shift + scroll or sideways scroll. Plain scroll still scrolls the page.
+    svg.addEventListener('wheel', function(e) {
+        if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, tOf(svgX(e)));
+        } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+            e.preventDefault();
+            panBy((e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) / view.pps);
+        }
+    }, { passive: false });
+
+    const mini = $('minimap');
+    mini.addEventListener('pointerdown', function(e) {
+        mini.setPointerCapture(e.pointerId);
+        let t = miniT(e);
+        if (t < view.t0 || t > view.t0 + view.span) { // clicked outside the window: centre it there
+            view.fit = view.span >= view.extent - 0.001;
+            view.t0 = clamp(t - view.span / 2, 0, Math.max(0, view.extent - view.span));
+            renderTimeline();
+        }
+        miniDrag = { grab: miniT(e) - view.t0 };
+    });
+    mini.addEventListener('pointermove', function(e) {
+        if (!miniDrag || view.span >= view.extent - 0.001) return;
+        view.fit = false;
+        view.t0 = clamp(miniT(e) - miniDrag.grab, 0, Math.max(0, view.extent - view.span));
+        renderTimeline();
+    });
+    ['pointerup', 'pointercancel'].forEach((n) => mini.addEventListener(n, () => { miniDrag = null; }));
 
     // Following a link that only changes the #... part (e.g. the example mix) loads it in place
     window.addEventListener('hashchange', function() {
@@ -1053,6 +1221,8 @@ window.resetPlayers = resetPlayers;
 window.tapTempo = tapTempo;
 window.setFirstBeat = setFirstBeat;
 window.toggleSolo = toggleSolo;
+window.zoomBy = zoomBy;
+window.fitTimeline = fitTimeline;
 window.matchTempo = matchTempo;
 window.addMarker = addMarker;
 window.clearMarkers = clearMarkers;
