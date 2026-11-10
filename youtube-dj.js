@@ -473,7 +473,8 @@ function drawLane(svg, id, y, origin) {
         }
     }
     const label = el('text', { x: Math.max(x0, LAYOUT.pad) + 6, y: y + 21 }, svg);
-    label.textContent = `Video ${id}`;
+    const st = startOf(id);
+    label.textContent = st > 0 ? `Video ${id} (starts at ${fmtTime(st)})` : `Video ${id}`;
 }
 
 function updatePlayhead() {
@@ -512,7 +513,14 @@ function onTimelineDown(e) {
     svg.setPointerCapture(e.pointerId);
 
     if (kind === 'lane') {
-        drag = { kind, id: e.target.dataset.id, x0: svgX(e), off0: getOffset(), extent: view.extent };
+        const id = e.target.dataset.id;
+        const o = origins();
+        drag = {
+            kind, id, x0: svgX(e), extent: view.extent,
+            o0: o[id],                       // mix time where this lane's start point plays
+            s0: startOf(id),                 // start point (seconds into the clip)
+            other: o[id === 'A' ? 'B' : 'A'] // the other lane stays put
+        };
     } else if (kind === 'ruler') {
         drag = { kind, wasPlaying: mix.playing };
         if (mix.playing) pauseMix();
@@ -546,14 +554,27 @@ function onTimelineMove(e) {
     if (!drag) return;
     if (drag.kind === 'lane') {
         const dt = (svgX(e) - drag.x0) / view.pps;
-        // dragging A right is the same as moving B left, relative to A
-        let raw = drag.off0 + (drag.id === 'B' ? dt : -dt);
-        // a lane can slide until only a sliver is left: it must still overlap the
-        // other lane and stay inside the visible timeline (anything past the end is clipped)
+        // Moving left past 0:00 trims the front of the clip (the start point moves into
+        // the clip); moving back right first un-trims, then slides the lane.
+        let origin, start;
+        if (dt >= 0) {
+            if (dt <= drag.s0) { start = drag.s0 - dt; origin = drag.o0; }
+            else { start = 0; origin = drag.o0 + (dt - drag.s0); }
+        } else if (drag.o0 + dt >= 0) {
+            start = drag.s0; origin = drag.o0 + dt;
+        } else {
+            start = drag.s0 - (drag.o0 + dt); origin = 0;
+        }
+        const dur = videoState[drag.id].duration;
+        if (dur > 0) start = Math.min(start, dur - 1);
+        start = Math.round(start * 1000) / 1000;
+        $('start' + drag.id).value = start;
+
+        const raw = drag.id === 'B' ? origin - drag.other : drag.other - origin;
+        // each lane must still overlap the other and stay inside the visible timeline
         const maxOff = Math.max(0, Math.min(laneLength('A'), drag.extent - 2));
         const minOff = -Math.max(0, Math.min(laneLength('B'), drag.extent - 2));
-        raw = clamp(raw, minOff, maxOff);
-        const off = clamp(snapOffset(raw, e.shiftKey), minOff, maxOff);
+        const off = clamp(snapOffset(clamp(raw, minOff, maxOff), e.shiftKey), minOff, maxOff);
         $('offsetB').value = Math.round(off * 1000) / 1000;
         renderTimeline();
     } else if (drag.kind === 'ruler') {
