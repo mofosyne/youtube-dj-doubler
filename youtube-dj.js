@@ -297,6 +297,7 @@ function addMarker(id) {
 
 function clearMarkers(id) {
     markers[id] = [];
+    selectedMarker = null;
     renderTimeline();
 }
 
@@ -401,6 +402,7 @@ function resetPlayers() {
     });
     curve = defaultCurve();
     markers.A = []; markers.B = [];
+    selectedMarker = null;
     mix.t = 0;
     applyVolumes(true);
     renderTimeline();
@@ -528,6 +530,19 @@ function drawLane(svg, id, y, origin) {
         tip.textContent = `${fmtTime(m)} - click to jump, double-click to delete`;
         hit.appendChild(tip);
     });
+    if (selectedMarker && selectedMarker.id === id && markers[id][selectedMarker.index] !== undefined) {
+        const m = markers[id][selectedMarker.index];
+        const x = x0 + (m - startOf(id)) * view.pps;
+        if (m >= startOf(id) && x >= 0 && x <= view.W) {
+            const px = Math.min(x + 12, view.W - 74);
+            el('rect', {
+                x: px, y: y + 9, width: 66, height: 17, rx: 8, class: 'tl-start-btn',
+                'data-kind': 'markstart', 'data-id': id, 'data-index': selectedMarker.index
+            }, svg);
+            const t = el('text', { x: px + 33, y: y + 21, 'text-anchor': 'middle', class: 'tl-start-text' }, svg);
+            t.textContent = 'Start here';
+        }
+    }
     const label = el('text', { x: Math.max(x0, LAYOUT.pad) + 6, y: y + 21 }, svg);
     const st = startOf(id);
     label.textContent = st > 0 ? `Video ${id} (starts at ${fmtTime(st)})` : `Video ${id}`;
@@ -547,6 +562,7 @@ function updatePlayhead() {
 let drag = null;
 let lastPointTap = { index: -1, time: 0 };
 let lastMarkerTap = { key: '', time: 0 };
+let selectedMarker = null; // { id, index } - shows a "Start here" button next to it
 
 function svgX(e) {
     return e.clientX - $('timeline').getBoundingClientRect().left;
@@ -568,6 +584,10 @@ function onTimelineDown(e) {
     if (!kind) return;
     const svg = $('timeline');
     svg.setPointerCapture(e.pointerId);
+    if (selectedMarker && kind !== 'marker' && kind !== 'markstart') {
+        selectedMarker = null;
+        renderTimeline();
+    }
 
     if (kind === 'lane') {
         const id = e.target.dataset.id;
@@ -586,12 +606,26 @@ function onTimelineDown(e) {
         if (lastMarkerTap.key === key && now - lastMarkerTap.time < 350) {
             lastMarkerTap = { key: '', time: 0 };
             markers[id].splice(i, 1);
+            selectedMarker = null;
             renderTimeline();
             return;
         }
         lastMarkerTap = { key, time: now };
+        selectedMarker = { id, index: i };
         const t = origins()[id] + markers[id][i] - startOf(id);
+        renderTimeline();
         if (mix.playing) startMix(t); else { mix.t = t; updatePlayhead(); applyVolumes(); }
+    } else if (kind === 'markstart') {
+        // make this marker the clip's start point; the lane keeps its place on the mix,
+        // so the marker now plays at the lane's left edge
+        const id = e.target.dataset.id;
+        let start = markers[id][parseInt(e.target.dataset.index, 10)];
+        const dur = videoState[id].duration;
+        if (dur > 0) start = Math.min(start, dur - 1);
+        $('start' + id).value = start;
+        selectedMarker = null;
+        renderTimeline();
+        updateStatus(`Video ${id} now starts at ${fmtTime(start)}`);
     } else if (kind === 'ruler') {
         drag = { kind, wasPlaying: mix.playing };
         if (mix.playing) pauseMix();

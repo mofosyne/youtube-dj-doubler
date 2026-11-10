@@ -451,3 +451,6 @@ h1 { font-size: 1.5em; margin: 0 0 8px; }
 .tl-marker { stroke: #fff; stroke-width: 1.5; pointer-events: none; }
 .tl-marker-flag { fill: #ffd166; pointer-events: none; }
 .tl-marker-hit { fill: transparent; cursor: pointer; }
+
+.tl-start-btn { fill: #ffd166; cursor: pointer; }
+#timeline text.tl-start-text { fill: #1a1a2e; font-weight: 600; font-size: 11px; }

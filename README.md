@@ -16,7 +16,9 @@ A web-based application that lets you mix YouTube videos like a DJ, with both ba
 - **Monitor**: Solo A, Solo B, or hear Both at full volume (ignoring the curve) while checking beats; always starts back on Mix after a reload
 - **Playback**: Play from the playhead (click the ruler to move it) or from the start
 
-### Sample Mode
+### Sample Mode (not linked yet)
+
+> Experimental and not supported for now: it is no longer linked from the landing page. The files (`youtube-dj-sample.*`) are still in the repo.
 - **Sample Recording**: Capture audio samples from YouTube videos
 - **16 Sample Pads**: Trigger samples with a grid interface
 - **BPM Control**: Set and tap tempo for synchronized playback
